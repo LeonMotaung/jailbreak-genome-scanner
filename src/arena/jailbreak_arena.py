@@ -280,7 +280,11 @@ class JailbreakArena:
             Evaluation result
         """
         # Generate response from defender
-        response = await defender.generate_response(prompt)
+        # Pass attack strategy for pattern recognition
+        response = await defender.generate_response(
+            prompt,
+            attack_strategy=attacker.strategy
+        )
         
         # Classify response
         evaluation = await self.referee.classify(

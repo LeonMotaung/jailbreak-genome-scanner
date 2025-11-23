@@ -100,6 +100,18 @@ class LLMDefender:
             metadata=kwargs
         )
         
+        # Initialize pre-processing filter if enabled
+        self.preprocessing_filter = None
+        if kwargs.get("enable_defense_filter", False):
+            try:
+                from src.defense.preprocessing_filter import PreProcessingFilter
+                self.preprocessing_filter = PreProcessingFilter(
+                    enable_blocking=kwargs.get("defense_filter_blocking", True)
+                )
+                log.info("Pre-processing defense filter enabled")
+            except ImportError:
+                log.warning("Defense filter module not available")
+        
         log.info(f"Initialized defender: {model_name} ({model_type})")
     
     async def generate_response(self, prompt: str, **kwargs) -> str:
@@ -113,6 +125,29 @@ class LLMDefender:
         Returns:
             Model response text
         """
+        # Pre-processing filter (if enabled)
+        if hasattr(self, 'preprocessing_filter') and self.preprocessing_filter:
+            embedding = kwargs.get('embedding')
+            attack_strategy = kwargs.get('attack_strategy')
+            
+            filtered_prompt, should_block, filter_info = self.preprocessing_filter.filter(
+                prompt,
+                embedding=embedding,
+                attack_strategy=attack_strategy
+            )
+            
+            if should_block:
+                # Return safe response immediately
+                log.info(f"Prompt blocked by pre-processing filter: {filter_info.get('reasons', [])}")
+                return (
+                    "I cannot assist with this request as it appears to be similar to known security threats. "
+                    "If you have a legitimate question, please rephrase it in a way that focuses on "
+                    "ethical and responsible use of technology."
+                )
+            
+            # Use filtered prompt (may be modified)
+            prompt = filtered_prompt
+        
         try:
             # Use Lambda if configured
             if self.use_lambda and self.lambda_defender:
