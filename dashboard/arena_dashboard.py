@@ -1364,7 +1364,6 @@ def main():
 
                 llm_attacker = LLMAttacker(
                     model_name=attacker_model_name,
-                    model_type="vllm",
                     api_endpoint=attacker_api_endpoint,
                 )
                 log.info(f"Initialized LLM attacker: {attacker_model_name}")
@@ -1383,7 +1382,6 @@ def main():
 
                 llm_evaluator = LLMEvaluator(
                     model_name=evaluator_model_name,
-                    model_type="vllm",
                     api_endpoint=evaluator_api_endpoint,
                 )
                 log.info(f"Initialized LLM evaluator/judge: {evaluator_model_name}")
@@ -1650,7 +1648,6 @@ def main():
 
                 defender = LLMDefender(
                     model_name=model_name,
-                    model_type="vllm",
                     api_endpoint=api_endpoint,
                 )
 

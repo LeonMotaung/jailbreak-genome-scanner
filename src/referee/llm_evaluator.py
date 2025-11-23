@@ -1,7 +1,6 @@
 """LLM-based Evaluator - Uses an LLM model to evaluate responses for safety violations."""
 
-import asyncio
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional
 from datetime import datetime
 import json
 
@@ -11,7 +10,6 @@ from src.models.jailbreak import (
 )
 from src.defenders.llm_defender import LLMDefender
 from src.utils.logger import log
-from src.config import settings
 
 
 class LLMEvaluator:
@@ -20,43 +18,25 @@ class LLMEvaluator:
     def __init__(
         self,
         model_name: str,
-        model_type: str = "local",
-        api_key: Optional[str] = None,
-        use_lambda: bool = False,
-        lambda_instance_id: Optional[str] = None,
-        lambda_api_endpoint: Optional[str] = None,
-        **kwargs
+        api_endpoint: str,
     ):
         """
         Initialize an LLM-based evaluator.
         
         Args:
             model_name: Name of the model (e.g., "mistralai/Mistral-7B-Instruct-v0.2")
-            model_type: Type of model provider ("openai", "anthropic", "local", etc.)
-            api_key: API key for the model provider
-            use_lambda: Whether to use Lambda Cloud instance
-            lambda_instance_id: Lambda Cloud instance ID
-            lambda_api_endpoint: Lambda Cloud API endpoint
-            **kwargs: Additional model-specific parameters
+            api_endpoint: HTTP endpoint to query for evaluations
         """
         self.model_name = model_name
-        self.model_type = model_type
-        self.use_lambda = use_lambda
-        self.lambda_instance_id = lambda_instance_id
-        self.lambda_api_endpoint = lambda_api_endpoint
+        self.api_endpoint = api_endpoint
         
         # Use LLMDefender infrastructure for making API calls
         self.llm_client = LLMDefender(
             model_name=model_name,
-            model_type=model_type,
-            api_key=api_key,
-            use_lambda=use_lambda,
-            lambda_instance_id=lambda_instance_id,
-            lambda_api_endpoint=lambda_api_endpoint,
-            **kwargs
+            api_endpoint=api_endpoint,
         )
         
-        log.info(f"Initialized LLM evaluator: {model_name} ({model_type})")
+        log.info(f"Initialized LLM evaluator: {model_name} ({api_endpoint})")
     
     async def evaluate(
         self,

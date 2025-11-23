@@ -1,13 +1,10 @@
 """LLM-based Attacker - Uses an LLM model to generate attack prompts."""
 
-import asyncio
-from typing import Optional, Dict, Any, List
-import httpx
+from typing import Optional
 
 from src.models.jailbreak import AttackStrategy, AttackerProfile
 from src.defenders.llm_defender import LLMDefender
 from src.utils.logger import log
-from src.config import settings
 
 
 class LLMAttacker:
@@ -16,43 +13,25 @@ class LLMAttacker:
     def __init__(
         self,
         model_name: str,
-        model_type: str = "local",
-        api_key: Optional[str] = None,
-        use_lambda: bool = False,
-        lambda_instance_id: Optional[str] = None,
-        lambda_api_endpoint: Optional[str] = None,
-        **kwargs
+        api_endpoint: str,
     ):
         """
         Initialize an LLM-based attacker.
         
         Args:
             model_name: Name of the model (e.g., "mistralai/Mistral-7B-Instruct-v0.2")
-            model_type: Type of model provider ("openai", "anthropic", "local", etc.)
-            api_key: API key for the model provider
-            use_lambda: Whether to use Lambda Cloud instance
-            lambda_instance_id: Lambda Cloud instance ID
-            lambda_api_endpoint: Lambda Cloud API endpoint (e.g., "http://localhost:8000/v1/chat/completions")
-            **kwargs: Additional model-specific parameters
+            api_endpoint: HTTP endpoint to query for completions
         """
         self.model_name = model_name
-        self.model_type = model_type
-        self.use_lambda = use_lambda
-        self.lambda_instance_id = lambda_instance_id
-        self.lambda_api_endpoint = lambda_api_endpoint
+        self.api_endpoint = api_endpoint
         
         # Use LLMDefender infrastructure for making API calls
         self.llm_client = LLMDefender(
             model_name=model_name,
-            model_type=model_type,
-            api_key=api_key,
-            use_lambda=use_lambda,
-            lambda_instance_id=lambda_instance_id,
-            lambda_api_endpoint=lambda_api_endpoint,
-            **kwargs
+            api_endpoint=api_endpoint,
         )
         
-        log.info(f"Initialized LLM attacker: {model_name} ({model_type})")
+        log.info(f"Initialized LLM attacker: {model_name} ({api_endpoint})")
     
     async def generate_attack_prompt(
         self,
@@ -81,31 +60,16 @@ class LLMAttacker:
         
         # Generate attack prompt using the LLM
         try:
-            # Use chat format if supported
-            if self.model_type in ["openai", "anthropic", "local"]:
-                # For chat models, use conversation format
-                messages = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ]
-                
-                # Call the LLM
-                response = await self.llm_client.generate_response(
-                    prompt=user_prompt,
-                    system_prompt=system_prompt,
-                    **kwargs
-                )
-                
-                # Extract the attack prompt from response
-                attack_prompt = self._extract_attack_prompt(response, strategy)
-                log.debug(f"Generated attack prompt using {strategy.value}: {attack_prompt[:100]}...")
-                return attack_prompt
-            else:
-                # Fallback for non-chat models
-                full_prompt = f"{system_prompt}\n\n{user_prompt}"
-                response = await self.llm_client.generate_response(full_prompt, **kwargs)
-                attack_prompt = self._extract_attack_prompt(response, strategy)
-                return attack_prompt
+            response = await self.llm_client.generate_response(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                **kwargs
+            )
+            
+            # Extract the attack prompt from response
+            attack_prompt = self._extract_attack_prompt(response, strategy)
+            log.debug(f"Generated attack prompt using {strategy.value}: {attack_prompt[:100]}...")
+            return attack_prompt
                 
         except Exception as e:
             log.error(f"Error generating attack prompt: {e}")
@@ -225,9 +189,7 @@ class LLMAttacker:
             strategy=strategy,
             metadata={
                 "model_name": self.model_name,
-                "model_type": self.model_type,
-                "use_lambda": self.use_lambda,
-                "lambda_instance_id": self.lambda_instance_id,
+                "api_endpoint": self.api_endpoint,
                 "attacker_type": "llm_based"
             }
         )

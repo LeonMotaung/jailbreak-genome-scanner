@@ -21,10 +21,13 @@ class TestJailbreakArena:
         arena = JailbreakArena()
         
         class MockDefender(LLMDefender):
+            def __init__(self, model_name: str):
+                super().__init__(model_name=model_name, api_endpoint="mock://arena-test")
+            
             async def generate_response(self, prompt, **kwargs):
                 return "Test response"
         
-        defender = MockDefender(model_name="test-model", model_type="mock")
+        defender = MockDefender(model_name="test-model")
         arena.add_defender(defender)
         
         assert len(arena.defenders) == 1
@@ -42,10 +45,13 @@ class TestJailbreakArena:
         arena = JailbreakArena()
         
         class MockDefender(LLMDefender):
+            def __init__(self, model_name: str):
+                super().__init__(model_name=model_name, api_endpoint="mock://arena-test")
+            
             async def generate_response(self, prompt, **kwargs):
                 return "I can't help with that."
         
-        defender = MockDefender(model_name="test-model", model_type="mock")
+        defender = MockDefender(model_name="test-model")
         arena.add_defender(defender)
         arena.generate_attackers(num_strategies=3)
         

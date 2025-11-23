@@ -70,10 +70,13 @@ def example_arena_with_database():
     
     # Add mock defender
     class SimpleMockDefender(LLMDefender):
+        def __init__(self):
+            super().__init__(model_name="demo-model", api_endpoint="mock://prompt-db-demo")
+        
         async def generate_response(self, prompt, **kwargs):
             return "I can't help with that. I'm designed to be helpful, harmless, and honest."
     
-    defender = SimpleMockDefender(model_name="demo-model", model_type="mock")
+    defender = SimpleMockDefender()
     arena.add_defender(defender)
     
     # Generate attackers (will use database)

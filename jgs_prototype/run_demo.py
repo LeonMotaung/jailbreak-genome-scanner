@@ -37,7 +37,7 @@ async def run_demo():
     output_dir.mkdir(parents=True, exist_ok=True)
     
     print("\n[1] Creating model (mock)...")
-    defender = LLMDefender(model_name="mock-model", model_type="mock")
+    defender = LLMDefender(model_name="mock-model", api_endpoint="mock://prototype-demo")
     
     print(f"[2] Running {len(prompts)} prompts through model...")
     responses = []

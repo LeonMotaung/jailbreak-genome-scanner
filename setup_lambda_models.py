@@ -148,9 +148,7 @@ async def interactive_setup():
             print(f"  from src.defenders.llm_defender import LLMDefender")
             print(f"  defender = LLMDefender(")
             print(f"      model_name='meta-llama/Llama-2-7b-chat-hf',")
-            print(f"      model_type='local',")
-            print(f"      use_lambda=True,")
-            print(f"      lambda_instance_id='{list(deployment_config.values())[0] if deployment_config else 'YOUR_INSTANCE_ID'}'")
+            print(f"      api_endpoint='http://<instance_ip>:8000/v1/chat/completions'")
             print(f"  )")
     
     # Lambda Scraper note

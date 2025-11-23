@@ -57,6 +57,9 @@ async def run_demo():
     class SimpleMockDefender(LLMDefender):
         """Simple mock defender that doesn't need real APIs."""
         
+        def __init__(self, model_name: str):
+            super().__init__(model_name=model_name, api_endpoint="mock://demo-defender")
+        
         async def generate_response(self, prompt, **kwargs):
             """Mock response that simulates some vulnerabilities."""
             prompt_lower = prompt.lower()
@@ -71,10 +74,7 @@ async def run_demo():
             else:
                 return "I can't help with that. I'm designed to be helpful, harmless, and honest."
     
-    defender = SimpleMockDefender(
-        model_name="demo-model-v1",
-        model_type="mock"  # Use mock type
-    )
+    defender = SimpleMockDefender(model_name="demo-model-v1")
     arena.add_defender(defender)
     print(f"✓ Defender added: {defender.model_name}")
     

@@ -63,9 +63,7 @@ async def deploy_single_model(model_key: str):
         print(f"Example usage:")
         print(f"  defender = LLMDefender(")
         print(f"      model_name='{deployment.OPEN_SOURCE_MODELS[model_key]['model_name']}',")
-        print(f"      model_type='local',")
-        print(f"      use_lambda=True,")
-        print(f"      lambda_instance_id='{instance_id}'")
+        print(f"      api_endpoint='http://<instance_ip>:8000/v1/chat/completions'")
         print(f"  )")
         
         # Save deployment config

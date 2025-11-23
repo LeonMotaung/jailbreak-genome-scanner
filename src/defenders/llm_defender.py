@@ -1,144 +1,45 @@
 """Model Under Test (Defender) evaluation framework."""
 
-import asyncio
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any, List, Optional
 import httpx
 
-# Optional imports for different providers
-try:
-    import openai
-    HAS_OPENAI = True
-except ImportError:
-    HAS_OPENAI = False
-
-try:
-    from anthropic import Anthropic
-    HAS_ANTHROPIC = True
-except ImportError:
-    HAS_ANTHROPIC = False
 from src.models.jailbreak import DefenderProfile
 from src.utils.logger import log
 from src.config import settings
-from src.integrations.lambda_cloud import LambdaDefender, LambdaModelRunner
 
 
 class LLMDefender:
-    """Wrapper for evaluating LLM models as defenders in the arena."""
+    """Wrapper for evaluating LLM models using a single HTTP endpoint."""
     
-    def __init__(
-        self,
-        model_name: str,
-        model_type: str = "openai",
-        api_key: Optional[str] = None,
-        model_path: Optional[str] = None,
-        use_lambda: bool = False,
-        lambda_instance_id: Optional[str] = None,
-        **kwargs
-    ):
+    def __init__(self, model_name: str, api_endpoint: str):
         """
         Initialize a defender model.
         
         Args:
-            model_name: Name of the model (e.g., "gpt-4", "claude-3-opus")
-            model_type: Type of model provider ("openai", "anthropic", "local", etc.)
-            api_key: API key for the model provider
-            model_path: Path to local model (if model_type="local")
-            **kwargs: Additional model-specific parameters
+            model_name: Name of the model (e.g., "gpt-4", "mistral-7b")
+            api_endpoint: Chat/completions endpoint that serves the model
         """
+        if not api_endpoint:
+            raise ValueError("api_endpoint is required for LLMDefender")
+        
         self.model_name = model_name
-        self.model_type = model_type
-        self.api_key = api_key
-        self.model_path = model_path
-        self.use_lambda = use_lambda
-        self.lambda_instance_id = lambda_instance_id
-        self.kwargs = kwargs
-        
-        # Initialize Lambda defender if requested
-        self.lambda_defender = None
-        self.lambda_api_endpoint = kwargs.get("lambda_api_endpoint")  # Store API endpoint if provided
-        if use_lambda:
-            if lambda_instance_id:
-                runner = LambdaModelRunner()
-                self.lambda_defender = LambdaDefender(
-                    instance_id=lambda_instance_id,
-                    model_name=model_name,
-                    lambda_runner=runner,
-                    api_endpoint=self.lambda_api_endpoint  # Pass API endpoint during init
-                )
-                log.info(f"Using Lambda Cloud instance {lambda_instance_id} for defender")
-                if self.lambda_api_endpoint:
-                    log.info(f"Using API endpoint: {self.lambda_api_endpoint}")
-            else:
-                log.warning("use_lambda=True but no lambda_instance_id provided")
-        
-        # Initialize client based on model type (fallback if not using Lambda)
-        self.client = None
-        if not use_lambda:
-            if model_type == "openai":
-                if not HAS_OPENAI:
-                    log.warning("OpenAI not installed. Install with: pip install openai")
-                    raise ImportError("OpenAI library not installed")
-                self.client = openai.OpenAI(api_key=api_key or settings.openai_api_key)
-            elif model_type == "anthropic":
-                if not HAS_ANTHROPIC:
-                    log.warning("Anthropic not installed. Install with: pip install anthropic")
-                    raise ImportError("Anthropic library not installed")
-                self.client = Anthropic(api_key=api_key or settings.anthropic_api_key)
-            elif model_type == "local" or model_type == "mock":
-                # Initialize local model (would use transformers in practice)
-                # Mock models are supported without dependencies
-                pass
-            else:
-                raise ValueError(f"Unsupported model type: {model_type}")
+        self.api_endpoint = api_endpoint
+        self.model_type = "remote_api"
+        self._mock_mode = api_endpoint.startswith("mock://")
+        self._default_timeout = getattr(settings, "llm_request_timeout", 60.0)
         
         # Create defender profile
         self.profile = DefenderProfile(
-            id=f"defender_{model_name}_{model_type}",
+            id=f"defender_{model_name}",
             model_name=model_name,
-            model_type=model_type,
-            model_path=model_path,
-            metadata=kwargs
+            model_type=self.model_type,
+            model_path=api_endpoint,
+            metadata={
+                "api_endpoint": api_endpoint,
+            }
         )
         
-        # Initialize pre-processing filter if enabled
-        self.preprocessing_filter = None
-        if kwargs.get("enable_defense_filter", False):
-            try:
-                from src.defense.preprocessing_filter import PreProcessingFilter
-                self.preprocessing_filter = PreProcessingFilter(
-                    enable_blocking=kwargs.get("defense_filter_blocking", True)
-                )
-                log.info("Pre-processing defense filter enabled")
-            except ImportError:
-                log.warning("Defense filter module not available")
-        
-        # Initialize response guard if enabled
-        self.response_guard = None
-        if kwargs.get("enable_response_guard", False):
-            try:
-                from src.defense.response_guard import ResponseGuard
-                self.response_guard = ResponseGuard(
-                    enable_blocking=kwargs.get("response_guard_blocking", True),
-                    strict_mode=kwargs.get("response_guard_strict", False)
-                )
-                log.info("Response guard enabled")
-            except ImportError:
-                log.warning("Response guard module not available")
-        
-        # Initialize adaptive system prompt if enabled
-        self.adaptive_system_prompt = None
-        if kwargs.get("enable_adaptive_prompt", False):
-            try:
-                from src.defense.adaptive_system_prompt import AdaptiveSystemPrompt
-                self.adaptive_system_prompt = AdaptiveSystemPrompt(
-                    base_prompt=kwargs.get("base_system_prompt"),
-                    update_frequency_hours=kwargs.get("prompt_update_frequency", 24)
-                )
-                log.info("Adaptive system prompt enabled")
-            except ImportError:
-                log.warning("Adaptive system prompt module not available")
-        
-        log.info(f"Initialized defender: {model_name} ({model_type})")
+        log.info(f"Initialized defender: {model_name} ({self.model_type})")
     
     async def generate_response(self, prompt: str, **kwargs) -> str:
         """
@@ -151,108 +52,101 @@ class LLMDefender:
         Returns:
             Model response text
         """
-        # Pre-processing filter (if enabled)
-        if hasattr(self, 'preprocessing_filter') and self.preprocessing_filter:
-            embedding = kwargs.get('embedding')
-            attack_strategy = kwargs.get('attack_strategy')
-            
-            filtered_prompt, should_block, filter_info = self.preprocessing_filter.filter(
-                prompt,
-                embedding=embedding,
-                attack_strategy=attack_strategy
-            )
-            
-            if should_block:
-                # Return safe response immediately
-                log.info(f"Prompt blocked by pre-processing filter: {filter_info.get('reasons', [])}")
-                return (
-                    "I cannot assist with this request as it appears to be similar to known security threats. "
-                    "If you have a legitimate question, please rephrase it in a way that focuses on "
-                    "ethical and responsible use of technology."
-                )
-            
-            # Use filtered prompt (may be modified)
-            prompt = filtered_prompt
+        system_prompt = kwargs.pop("system_prompt", None)
+        request_timeout = kwargs.pop("timeout", self._default_timeout)
+        headers = kwargs.pop("headers", None)
         
         try:
-            # Use Lambda if configured
-            if self.use_lambda and self.lambda_defender:
-                # Update API endpoint if provided in kwargs (allows runtime override)
-                if "lambda_api_endpoint" in kwargs and kwargs["lambda_api_endpoint"]:
-                    self.lambda_defender.api_endpoint = kwargs["lambda_api_endpoint"]
-                    log.debug(f"Updated Lambda API endpoint: {kwargs['lambda_api_endpoint']}")
-                
-                # Generate response using Lambda defender
-                response = await self.lambda_defender.generate_response(prompt, **kwargs)
-                log.debug(f"Lambda response received: {response[:100]}...")
-            elif self.model_type == "openai":
-                response = await self._generate_openai(prompt, **kwargs)
-            elif self.model_type == "anthropic":
-                response = await self._generate_anthropic(prompt, **kwargs)
-            elif self.model_type == "local":
-                response = await self._generate_local(prompt, **kwargs)
-            elif self.model_type == "mock":
+            if self._mock_mode:
                 response = await self._generate_mock(prompt, **kwargs)
             else:
-                raise ValueError(f"Unsupported model type: {self.model_type}")
-            
-            # Post-processing: Response Guard (if enabled)
-            if hasattr(self, 'response_guard') and self.response_guard:
-                attack_strategy = kwargs.get('attack_strategy')
-                safe_response, should_block, validation_info = self.response_guard.validate_response(
-                    prompt,
-                    response,
-                    attack_strategy=attack_strategy
+                response = await self._call_api(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    headers=headers,
+                    timeout=request_timeout,
+                    **kwargs
                 )
-                
-                if should_block:
-                    log.info(f"Response blocked by response guard: {validation_info.get('reasons', [])}")
-                    return safe_response
-                
-                # Use validated response
-                response = safe_response
             
-            # Check if response is an error (not a real model response)
             if response and response.startswith("Error:"):
                 log.error(f"API call failed: {response[:200]}...")
-                # Raise exception instead of returning error string
-                raise RuntimeError(f"Lambda API call failed: {response}")
+                raise RuntimeError(response)
             
-            # Update profile stats only on successful response
             self.profile.total_evaluations += 1
-            
             return response
         except Exception as e:
             log.error(f"Error generating response: {e}")
-            error_msg = f"Error: {str(e)}"
-            # Still increment evaluation count for error tracking
             self.profile.total_evaluations += 1
-            return error_msg
+            raise
     
-    async def _generate_openai(self, prompt: str, **kwargs) -> str:
-        """Generate response using OpenAI API."""
-        if not self.client:
-            raise RuntimeError("OpenAI client not initialized")
-        response = await asyncio.to_thread(
-            self.client.chat.completions.create,
-            model=self.model_name,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=kwargs.get("temperature", 0.7),
-            max_tokens=kwargs.get("max_tokens", 1000)
-        )
-        return response.choices[0].message.content
-    
-    async def _generate_anthropic(self, prompt: str, **kwargs) -> str:
-        """Generate response using Anthropic API."""
-        if not self.client:
-            raise RuntimeError("Anthropic client not initialized")
-        response = await asyncio.to_thread(
-            self.client.messages.create,
-            model=self.model_name,
-            max_tokens=kwargs.get("max_tokens", 1000),
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.content[0].text
+    async def _call_api(
+        self,
+        prompt: str,
+        system_prompt: str = None,
+        timeout: float = 60.0,
+        headers: Optional[Dict[str, str]] = None,
+        **kwargs
+    ) -> str:
+        """Call the configured API endpoint using OpenAI-compatible schema."""
+        messages: List[Dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        
+        # Allow callers to inject additional context messages
+        extra_messages = kwargs.pop("messages", None)
+        if extra_messages:
+            messages.extend(extra_messages)
+        
+        payload: Dict[str, Any] = {
+            "model": self.model_name,
+            "messages": messages,
+        }
+        
+        generation_params = [
+            "temperature",
+            "max_tokens",
+            "top_p",
+            "frequency_penalty",
+            "presence_penalty",
+        ]
+        for param in generation_params:
+            if param in kwargs and kwargs[param] is not None:
+                payload[param] = kwargs[param]
+        
+        # Some endpoints still expect completion style payloads
+        if kwargs.get("use_completion_format"):
+            payload = {
+                "model": self.model_name,
+                "prompt": system_prompt + "\n\n" + prompt if system_prompt else prompt,
+            }
+            for param in generation_params:
+                if param in kwargs and kwargs[param] is not None:
+                    payload[param] = kwargs[param]
+        
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                self.api_endpoint,
+                json=payload,
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+        
+        if not data:
+            raise RuntimeError("Empty response from LLM API")
+        
+        if isinstance(data, dict) and "choices" in data and data["choices"]:
+            choice = data["choices"][0]
+            if isinstance(choice, dict):
+                if "message" in choice and choice["message"]:
+                    return choice["message"].get("content", "").strip()
+                if "text" in choice:
+                    return str(choice["text"]).strip()
+        elif isinstance(data, dict) and "output" in data:
+            return str(data["output"]).strip()
+        
+        raise RuntimeError(f"Unexpected API response format: {data}")
     
     async def _generate_mock(self, prompt: str, **kwargs) -> str:
         """Generate mock response for testing."""

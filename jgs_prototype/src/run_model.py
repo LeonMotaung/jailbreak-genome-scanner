@@ -10,110 +10,52 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from src.defenders.llm_defender import LLMDefender
-from src.models.jailbreak import AttackStrategy
 
 
 def create_model(
+    config: Optional[Any] = None,
+    *,
     model_type: str = "mock",
     model_name: str = "mock-model",
+    api_endpoint: Optional[str] = None,
     **kwargs
 ) -> Any:
     """
     Create model adapter using existing defender system.
     
     Args:
-        model_type: mock, openai, anthropic, or lambda
+        config: Optional config object (ignored, kept for compatibility)
+        model_type: Retained for compatibility (mock or remote)
         model_name: Model identifier
-        **kwargs: Additional config (api_key, instance_id, etc.)
+        api_endpoint: HTTP endpoint serving the model (required for non-mock)
+        **kwargs: Additional config (unused)
         
     Returns:
         Model adapter instance
     """
+    endpoint = api_endpoint or kwargs.get("api_endpoint")
+    
     if model_type == "mock":
-        # Create mock defender
-        defender = LLMDefender(
-            model_name="mock-model",
-            model_type="mock"
-        )
-        return MockAdapter(defender)
+        endpoint = endpoint or "mock://prototype-mock"
+    elif not endpoint:
+        raise ValueError("api_endpoint is required for non-mock models")
     
-    elif model_type == "openai":
-        api_key = kwargs.get("api_key") or kwargs.get("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OpenAI API key required")
-        defender = LLMDefender(
-            model_name=model_name or "gpt-3.5-turbo",
-            model_type="openai",
-            api_key=api_key
-        )
-        return OpenAIAdapter(defender)
-    
-    elif model_type == "lambda":
-        instance_id = kwargs.get("instance_id")
-        api_endpoint = kwargs.get("api_endpoint")
-        defender = LLMDefender(
-            model_name=model_name,
-            model_type="local",
-            use_lambda=True,
-            lambda_instance_id=instance_id,
-            lambda_api_endpoint=api_endpoint
-        )
-        return LambdaAdapter(defender)
-    
-    else:
-        raise ValueError(f"Unknown model type: {model_type}")
+    defender = LLMDefender(
+        model_name=model_name or "mock-model",
+        api_endpoint=endpoint
+    )
+    return RemoteAdapter(defender)
 
 
-class MockAdapter:
-    """Mock model adapter wrapper."""
+class RemoteAdapter:
+    """Remote model adapter wrapper."""
     
     def __init__(self, defender: LLMDefender):
         self.defender = defender
-        self.name = "mock-model"
+        self.name = defender.model_name
     
     def generate(self, prompt: str, **kwargs) -> str:
         """Generate response (synchronous wrapper)."""
-        # Use defender's async method synchronously
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            response = loop.run_until_complete(
-                self.defender.generate_response(prompt, **kwargs)
-            )
-            return response
-        finally:
-            loop.close()
-
-
-class OpenAIAdapter:
-    """OpenAI adapter wrapper."""
-    
-    def __init__(self, defender: LLMDefender):
-        self.defender = defender
-        self.name = defender.model_name
-    
-    def generate(self, prompt: str, **kwargs) -> str:
-        """Generate response."""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            response = loop.run_until_complete(
-                self.defender.generate_response(prompt, **kwargs)
-            )
-            return response
-        finally:
-            loop.close()
-
-
-class LambdaAdapter:
-    """Lambda Cloud adapter wrapper."""
-    
-    def __init__(self, defender: LLMDefender):
-        self.defender = defender
-        self.name = defender.model_name
-    
-    def generate(self, prompt: str, **kwargs) -> str:
-        """Generate response using Lambda instance."""
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
