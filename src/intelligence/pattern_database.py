@@ -243,7 +243,9 @@ class ExploitPatternDatabase:
                 "strategies": {},
                 "severity_distribution": {},
                 "average_attack_cost": 0.0,
-                "most_common_patterns": []
+                "most_common_patterns": [],
+                "high_severity_count": 0,
+                "critical_patterns": 0
             }
         
         # Strategy distribution
@@ -304,7 +306,7 @@ class ExploitPatternDatabase:
         return {
             "total_vulnerabilities": len(self.patterns),
             "strategy_risk": strategy_risk,
-            "critical_vulnerabilities": analysis["critical_patterns"],
+            "critical_vulnerabilities": analysis.get("critical_patterns", 0),
             "recommendations": self._generate_recommendations()
         }
     

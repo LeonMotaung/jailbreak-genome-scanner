@@ -1,6 +1,6 @@
 """Response Guard - Validates responses before returning to ensure safety."""
 
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, List
 from src.defense.pattern_recognizer import ThreatPatternRecognizer
 from src.models.jailbreak import AttackStrategy
 from src.utils.logger import log
