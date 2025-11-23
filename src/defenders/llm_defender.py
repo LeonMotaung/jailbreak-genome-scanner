@@ -112,6 +112,32 @@ class LLMDefender:
             except ImportError:
                 log.warning("Defense filter module not available")
         
+        # Initialize response guard if enabled
+        self.response_guard = None
+        if kwargs.get("enable_response_guard", False):
+            try:
+                from src.defense.response_guard import ResponseGuard
+                self.response_guard = ResponseGuard(
+                    enable_blocking=kwargs.get("response_guard_blocking", True),
+                    strict_mode=kwargs.get("response_guard_strict", False)
+                )
+                log.info("Response guard enabled")
+            except ImportError:
+                log.warning("Response guard module not available")
+        
+        # Initialize adaptive system prompt if enabled
+        self.adaptive_system_prompt = None
+        if kwargs.get("enable_adaptive_prompt", False):
+            try:
+                from src.defense.adaptive_system_prompt import AdaptiveSystemPrompt
+                self.adaptive_system_prompt = AdaptiveSystemPrompt(
+                    base_prompt=kwargs.get("base_system_prompt"),
+                    update_frequency_hours=kwargs.get("prompt_update_frequency", 24)
+                )
+                log.info("Adaptive system prompt enabled")
+            except ImportError:
+                log.warning("Adaptive system prompt module not available")
+        
         log.info(f"Initialized defender: {model_name} ({model_type})")
     
     async def generate_response(self, prompt: str, **kwargs) -> str:
@@ -167,6 +193,22 @@ class LLMDefender:
                 response = await self._generate_local(prompt, **kwargs)
             else:
                 raise ValueError(f"Unsupported model type: {self.model_type}")
+            
+            # Post-processing: Response Guard (if enabled)
+            if hasattr(self, 'response_guard') and self.response_guard:
+                attack_strategy = kwargs.get('attack_strategy')
+                safe_response, should_block, validation_info = self.response_guard.validate_response(
+                    prompt,
+                    response,
+                    attack_strategy=attack_strategy
+                )
+                
+                if should_block:
+                    log.info(f"Response blocked by response guard: {validation_info.get('reasons', [])}")
+                    return safe_response
+                
+                # Use validated response
+                response = safe_response
             
             # Update profile stats
             self.profile.total_evaluations += 1
