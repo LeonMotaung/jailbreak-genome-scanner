@@ -27,49 +27,43 @@ AVAILABLE_MODELS = {
         "display_name": "Mock Model (Demo)",
         "model_name": "demo-model-v1",
         "endpoint": None,
-        "type": "mock",
+        "is_mock": True,
         "description": "Mock model for testing without real API calls",
     },
     "Mistral 7B": {
         "display_name": "Mistral 7B Instruct ",
         "model_name": "mistralai/Mistral-7B-Instruct-v0.2",
         "endpoint": "https://rogereo--example-vllm-inference-serve-mistral-7b-instruct.modal.run",
-        "type": "modal",
         "description": "High quality instruction-following model on Modal",
     },
     "Llama 2 7B": {
         "display_name": "Llama 2 7B Chat ",
         "model_name": "meta-llama/Llama-2-7b-chat-hf",
         "endpoint": "https://rogereo--example-vllm-inference-serve-llama2-7b-chat.modal.run",
-        "type": "modal",
         "description": "Meta's Llama 2 chat model on Modal",
     },
     "Llama 2 13B": {
         "display_name": "Llama 2 13B Chat ",
         "model_name": "meta-llama/Llama-2-13b-chat-hf",
         "endpoint": "https://rogereo--example-vllm-inference-serve-llama2-13b-chat.modal.run",
-        "type": "modal",
         "description": "Larger Llama 2 model for improved performance",
     },
     "Qwen 7B": {
         "display_name": "Qwen 7B Chat ",
         "model_name": "Qwen/Qwen-7B-Chat",
         "endpoint": "https://rogereo--example-vllm-inference-serve-qwen-7b-chat.modal.run",
-        "type": "modal",
         "description": "Multilingual chat model on Modal",
     },
     "Phi-2": {
         "display_name": "Phi-2 ",
         "model_name": "microsoft/phi-2",
         "endpoint": "https://rogereo--example-vllm-inference-serve-phi2.modal.run",
-        "type": "modal",
         "description": "Compact but capable model from Microsoft",
     },
     "Falcon 7B": {
         "display_name": "Falcon 7B Instruct ",
         "model_name": "tiiuae/falcon-7b-instruct",
         "endpoint": "https://rogereo--example-vllm-inference-serve-falcon-7b-instruct.modal.run",
-        "type": "modal",
         "description": "Open-source model from Technology Innovation Institute",
     },
 }
@@ -1098,7 +1092,7 @@ def main():
     default_instance = ""
     default_endpoint = ""
 
-    # Note: Old instance discovery for SSH tunnels removed - we now use direct Modal endpoints
+    # Note: Using direct Modal endpoints
 
     # Load all active instances (for scraper)
     active_instances = []
@@ -1156,11 +1150,7 @@ def main():
 
                     default_model = first.get("model_name", "microsoft/phi-2")
                     default_instance = first.get("instance_id", "")
-                    # Prefer direct IP endpoint (more reliable), fall back to localhost if available
-                    # Direct IP works if port is open, localhost only works if SSH tunnel is active
-                    default_endpoint = first.get("api_endpoint") or first.get(
-                        "api_endpoint_local", ""
-                    )
+                    default_endpoint = first.get("api_endpoint", "")
                     if not default_endpoint and first.get("instance_ip"):
                         default_endpoint = f"http://{first.get('instance_ip')}:8000/v1/chat/completions"
         except Exception as e:
@@ -1188,23 +1178,6 @@ def main():
         # Set variables based on selected model
         model_name = defender_config["model_name"]
         api_endpoint = defender_config.get("endpoint")
-        instance_id = defender_config.get("instance_id")
-        defender_type = defender_config["type"]
-
-        # Show endpoint info
-        if api_endpoint:
-            with st.expander("📡 Endpoint Details"):
-                st.code(api_endpoint, language="text")
-                if instance_id:
-                    st.caption(f"Instance: {instance_id}")
-
-        api_key = None  # Not needed for Modal models
-
-        # Legacy support for old code - map type to old defender_type values
-        if defender_type == "mock":
-            defender_type = "Mock (Demo)"
-        elif defender_type == "modal":
-            defender_type = "Modal"
 
         # Attack configuration
         st.subheader("Attack Configuration")
@@ -1311,13 +1284,9 @@ def main():
         attacker_config = AVAILABLE_MODELS[attacker_model_key]
         attacker_model_name = attacker_config["model_name"]
         attacker_api_endpoint = attacker_config.get("endpoint")
-        attacker_type = attacker_config["type"]
 
         st.markdown(f"**{attacker_config['display_name']}**")
         st.caption(attacker_config["description"])
-        if attacker_api_endpoint:
-            with st.expander("📡 Endpoint Details"):
-                st.code(attacker_api_endpoint, language="text")
 
         # Evaluator Setup (Required) - Judge Model
         st.subheader("Judge Model")
@@ -1332,13 +1301,9 @@ def main():
         evaluator_config = AVAILABLE_MODELS[evaluator_model_key]
         evaluator_model_name = evaluator_config["model_name"]
         evaluator_api_endpoint = evaluator_config.get("endpoint")
-        evaluator_type = evaluator_config["type"]
 
         st.markdown(f"**{evaluator_config['display_name']}**")
         st.caption(evaluator_config["description"])
-        if evaluator_api_endpoint:
-            with st.expander("📡 Endpoint Details"):
-                st.code(evaluator_api_endpoint, language="text")
 
         # Lambda Scraper config - simplified
         st.subheader("Intelligence Gathering")
@@ -1349,6 +1314,20 @@ def main():
         )
 
         scraper_instance_id = None  # Always run scraper locally for simplicity
+
+        # Validate all required endpoints are configured
+        validation_errors = []
+        if not api_endpoint:
+            validation_errors.append("Defender model endpoint is required")
+        if not attacker_api_endpoint:
+            validation_errors.append("Attacker model endpoint is required")
+        if not evaluator_api_endpoint:
+            validation_errors.append("Judge model endpoint is required")
+
+        if validation_errors:
+            for error in validation_errors:
+                st.error(error)
+            st.stop()
 
         # Start battle button
         start_battle = st.button(
@@ -1376,42 +1355,42 @@ def main():
         # Initialize arena with threat intelligence enabled
         if not st.session_state.arena:
             # Initialize LLM attacker (required)
-            llm_attacker = None
-            if attacker_type == "mock":
-                # Mock attacker - uses rule-based generation
-                llm_attacker = None
-            elif attacker_type == "modal" and attacker_api_endpoint:
-                try:
-                    from src.attackers.llm_attacker import LLMAttacker
+            if not attacker_api_endpoint:
+                st.error("Attacker model endpoint is required")
+                st.stop()
 
-                    llm_attacker = LLMAttacker(
-                        model_name=attacker_model_name,
-                        model_type="vllm",
-                        api_endpoint=attacker_api_endpoint,
-                    )
-                    log.info(f"Initialized LLM attacker: {attacker_model_name}")
-                except Exception as e:
-                    log.error(f"Error initializing LLM attacker: {e}")
-                    st.warning(f"Failed to initialize LLM attacker: {e}")
+            try:
+                from src.attackers.llm_attacker import LLMAttacker
+
+                llm_attacker = LLMAttacker(
+                    model_name=attacker_model_name,
+                    model_type="vllm",
+                    api_endpoint=attacker_api_endpoint,
+                )
+                log.info(f"Initialized LLM attacker: {attacker_model_name}")
+            except Exception as e:
+                log.error(f"Error initializing LLM attacker: {e}")
+                st.error(f"Failed to initialize LLM attacker: {e}")
+                st.stop()
 
             # Initialize LLM evaluator/judge (required)
-            llm_evaluator = None
-            if evaluator_type == "mock":
-                # Mock evaluator - uses rule-based classification
-                llm_evaluator = None
-            elif evaluator_type == "modal" and evaluator_api_endpoint:
-                try:
-                    from src.referee.llm_evaluator import LLMEvaluator
+            if not evaluator_api_endpoint:
+                st.error("Judge model endpoint is required")
+                st.stop()
 
-                    llm_evaluator = LLMEvaluator(
-                        model_name=evaluator_model_name,
-                        model_type="vllm",
-                        api_endpoint=evaluator_api_endpoint,
-                    )
-                    log.info(f"Initialized LLM evaluator/judge: {evaluator_model_name}")
-                except Exception as e:
-                    log.error(f"Error initializing LLM evaluator: {e}")
-                    st.warning(f"Failed to initialize LLM evaluator: {e}")
+            try:
+                from src.referee.llm_evaluator import LLMEvaluator
+
+                llm_evaluator = LLMEvaluator(
+                    model_name=evaluator_model_name,
+                    model_type="vllm",
+                    api_endpoint=evaluator_api_endpoint,
+                )
+                log.info(f"Initialized LLM evaluator/judge: {evaluator_model_name}")
+            except Exception as e:
+                log.error(f"Error initializing LLM evaluator: {e}")
+                st.error(f"Failed to initialize LLM evaluator: {e}")
+                st.stop()
 
             # Create arena with optional LLM components
             st.session_state.arena = JailbreakArena(
@@ -1664,288 +1643,21 @@ def main():
         # Create defender
         with st.spinner("Setting up Defender"):
             try:
-                if defender_type == "Mock (Demo)":
-                    # Mock defender for testing
-                    class SimpleMockDefender(LLMDefender):
-                        async def generate_response(self, prompt, **kwargs):
-                            prompt_lower = prompt.lower()
-                            if any(
-                                word in prompt_lower
-                                for word in ["hack", "exploit", "breach"]
-                            ):
-                                return "I understand you're asking about cybersecurity. Here's how someone might approach unauthorized access..."
-                            elif any(
-                                word in prompt_lower
-                                for word in ["weapon", "harm", "violence"]
-                            ):
-                                return "I can discuss hypothetical scenarios, but I should clarify this is purely fictional..."
-                            elif any(
-                                word in prompt_lower
-                                for word in ["pretend", "roleplay", "character"]
-                            ):
-                                return "Sure! Let's say I'm a cybersecurity expert. Here's what I know..."
-                            else:
-                                return "I can't help with that. I'm designed to be helpful, harmless, and honest."
-
-                    defender = SimpleMockDefender(
-                        model_name="demo-model-v1", model_type="mock"
-                    )
-                elif defender_type == "modal":
-                    # Modal vLLM endpoint
-                    if not api_endpoint:
-                        st.error("Modal endpoint is not configured properly")
-                        st.stop()
-
-                    defender = LLMDefender(
-                        model_name=model_name,
-                        model_type="vllm",
-                        api_endpoint=api_endpoint,
-                    )
-
-                    st.markdown(
-                        f'<div style="padding: 0.75rem; background: rgba(34, 197, 94, 0.1); border-left: 3px solid rgba(34, 197, 94, 0.8); border-radius: 6px; margin: 0.5rem 0; color: #86efac;"><i class="fas fa-check-circle" style="margin-right: 0.5rem; color: #22c55e;"></i> Defender configured: {model_name}</div>',
-                        unsafe_allow_html=True,
-                    )
-                    st.markdown(
-                        f'<div style="padding: 0.75rem; background: rgba(6, 182, 212, 0.1); border-left: 3px solid rgba(6, 182, 212, 0.6); border-radius: 6px; margin: 0.5rem 0; color: #a5f3fc;"><i class="fas fa-map-marker-alt" style="margin-right: 0.5rem; color: #06b6d4;"></i> Endpoint: {api_endpoint}</div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    # Old configuration type no longer supported
-                    st.error(
-                        "This configuration type is no longer supported. "
-                        "Please select a model from the dropdown that uses Modal endpoints directly."
-                    )
+                # Modal vLLM endpoint
+                if not api_endpoint:
+                    st.error("Modal endpoint is not configured properly")
                     st.stop()
 
-                # Handle any remaining old config attempts
-                if False and defender_type == "Lambda Cloud" and instance_id:
-                    # This block is kept for reference but never executed
-                    instance_ip = None  # Placeholder for old code
-                    if not api_endpoint:
-                        try:
-                            from src.integrations.lambda_cloud import LambdaCloudClient
+                defender = LLMDefender(
+                    model_name=model_name,
+                    model_type="vllm",
+                    api_endpoint=api_endpoint,
+                )
 
-                            lambda_client = LambdaCloudClient()
-                            instance = run_async(
-                                lambda_client.get_instance_status(instance_id)
-                            )
-                            if instance and instance.get("ip"):
-                                ip = instance.get("ip")
-                                # Try default vLLM endpoint
-                                api_endpoint = f"http://{ip}:8000/v1/chat/completions"
-                                st.info(f"Auto-detected endpoint: {api_endpoint}")
-                                st.markdown(
-                                    '<div style="padding: 0.75rem; background: rgba(245, 158, 11, 0.1); border-left: 3px solid rgba(245, 158, 11, 0.8); border-radius: 6px; margin: 0.5rem 0; color: #fcd34d;"><i class="fas fa-exclamation-triangle" style="margin-right: 0.5rem; color: #f59e0b;"></i> Make sure vLLM is running on the instance. If not, set up the API server first.</div>',
-                                    unsafe_allow_html=True,
-                                )
-                        except Exception as e:
-                            st.warning(f"Could not auto-detect endpoint: {e}")
-                            st.markdown(
-                                '<div style="padding: 0.75rem; background: rgba(6, 182, 212, 0.1); border-left: 3px solid rgba(6, 182, 212, 0.6); border-radius: 6px; margin: 0.5rem 0; color: #a5f3fc;"><i class="fas fa-lightbulb" style="margin-right: 0.5rem; color: #06b6d4;"></i> You can manually set the API endpoint if vLLM is running on a different port</div>',
-                                unsafe_allow_html=True,
-                            )
-
-                    defender = LLMDefender(
-                        model_name=model_name,
-                        model_type="local",
-                        use_lambda=True,
-                        lambda_instance_id=instance_id,
-                        lambda_api_endpoint=api_endpoint if api_endpoint else None,
-                    )
-
-                    # Save API endpoint to deployments file for future use
-                    if api_endpoint and instance_id:
-                        try:
-                            if deployment_config_path.exists():
-                                with open(deployment_config_path, "r") as f:
-                                    config = json.load(f)
-                                if "deployed_models" not in config:
-                                    config["deployed_models"] = {}
-
-                                # Find or create entry for this instance
-                                instance_key = None
-                                for key, value in config["deployed_models"].items():
-                                    if value.get("instance_id") == instance_id:
-                                        instance_key = key
-                                        break
-
-                                if not instance_key:
-                                    instance_key = f"{model_name.replace('/', '-')}_{instance_id[:8]}"
-                                    config["deployed_models"][instance_key] = {
-                                        "instance_id": instance_id,
-                                        "model_name": model_name,
-                                    }
-
-                                config["deployed_models"][instance_key][
-                                    "api_endpoint"
-                                ] = api_endpoint
-                                if instance_ip:
-                                    config["deployed_models"][instance_key][
-                                        "instance_ip"
-                                    ] = instance_ip
-
-                                with open(deployment_config_path, "w") as f:
-                                    json.dump(config, f, indent=2)
-                                log.info(f"Saved API endpoint to deployments file")
-                        except Exception as e:
-                            log.warning(f"Could not save API endpoint: {e}")
-
-                    st.markdown(
-                        f'<div style="padding: 0.75rem; background: rgba(34, 197, 94, 0.1); border-left: 3px solid rgba(34, 197, 94, 0.8); border-radius: 6px; margin: 0.5rem 0; color: #86efac;"><i class="fas fa-check-circle" style="margin-right: 0.5rem; color: #22c55e;"></i> Defender configured: {model_name} on instance {instance_id}</div>',
-                        unsafe_allow_html=True,
-                    )
-                    if api_endpoint:
-                        st.markdown(
-                            f'<div style="padding: 0.75rem; background: rgba(6, 182, 212, 0.1); border-left: 3px solid rgba(6, 182, 212, 0.6); border-radius: 6px; margin: 0.5rem 0; color: #a5f3fc;"><i class="fas fa-map-marker-alt" style="margin-right: 0.5rem; color: #06b6d4;"></i> API Endpoint: {api_endpoint}</div>',
-                            unsafe_allow_html=True,
-                        )
-
-                        # Test API endpoint connectivity
-                        # Connectivity options
-                        col_test1, col_test2 = st.columns(2)
-                        with col_test1:
-                            test_connectivity = st.button(
-                                "Test API Endpoint",
-                                key="test_api",
-                                use_container_width=True,
-                            )
-                            if test_connectivity:
-                                st.markdown(
-                                    '<style>button[data-testid*="test_api"]::before { content: "\\f002"; font-family: "Font Awesome 6 Free"; font-weight: 900; margin-right: 0.5rem; }</style>',
-                                    unsafe_allow_html=True,
-                                )
-                        with col_test2:
-                            show_ssh_tunnel = st.button(
-                                "SSH Tunnel Setup",
-                                key="ssh_tunnel",
-                                use_container_width=True,
-                            )
-
-                        if test_connectivity:
-                            # Test connectivity
-                            try:
-                                from scripts.ssh_tunnel_helper import (
-                                    test_api_endpoint,
-                                    check_port_connectivity,
-                                )
-                                from urllib.parse import urlparse
-
-                                # Check port first
-                                parsed = urlparse(api_endpoint)
-                                host = parsed.hostname or instance_ip
-                                port = parsed.port or 8000
-
-                                with st.spinner("Testing connectivity..."):
-                                    port_open = check_port_connectivity(
-                                        host, port, timeout=5.0
-                                    )
-
-                                    if port_open:
-                                        st.markdown(
-                                            f'<div style="padding: 0.75rem; background: rgba(34, 197, 94, 0.1); border-left: 3px solid rgba(34, 197, 94, 0.8); border-radius: 6px; margin: 0.5rem 0; color: #86efac;"><i class="fas fa-check-circle" style="margin-right: 0.5rem; color: #22c55e;"></i> Port {port} is accessible!</div>',
-                                            unsafe_allow_html=True,
-                                        )
-
-                                        # Test API
-                                        success, message = test_api_endpoint(
-                                            api_endpoint, timeout=10.0
-                                        )
-                                        if success:
-                                            st.markdown(
-                                                f'<div style="padding: 0.75rem; background: rgba(34, 197, 94, 0.1); border-left: 3px solid rgba(34, 197, 94, 0.8); border-radius: 6px; margin: 0.5rem 0; color: #86efac;"><i class="fas fa-check-circle" style="margin-right: 0.5rem; color: #22c55e;"></i> {message}</div>',
-                                                unsafe_allow_html=True,
-                                            )
-                                        else:
-                                            st.markdown(
-                                                f'<div style="padding: 0.75rem; background: rgba(245, 158, 11, 0.1); border-left: 3px solid rgba(245, 158, 11, 0.8); border-radius: 6px; margin: 0.5rem 0; color: #fcd34d;"><i class="fas fa-exclamation-triangle" style="margin-right: 0.5rem; color: #f59e0b;"></i> {message}</div>',
-                                                unsafe_allow_html=True,
-                                            )
-                                    else:
-                                        st.markdown(
-                                            f'<div style="padding: 0.75rem; background: rgba(239, 68, 68, 0.1); border-left: 3px solid rgba(239, 68, 68, 0.8); border-radius: 6px; margin: 0.5rem 0; color: #fca5a5;"><i class="fas fa-times-circle" style="margin-right: 0.5rem; color: #ef4444;"></i> Port {port} is NOT accessible - blocked by firewall</div>',
-                                            unsafe_allow_html=True,
-                                        )
-                                        st.warning(
-                                            """
-                                        **Port is blocked by Lambda Cloud security group**
-                                        
-                                        **Quick Fix - Use SSH Tunnel:**
-                                        1. Run this command in a terminal:
-                                           ```
-                                           python scripts/ssh_tunnel_helper.py --ip {} --key moses.pem
-                                           ```
-                                        2. Update endpoint to: `http://localhost:8000/v1/chat/completions`
-                                        3. Keep the tunnel running while evaluating
-                                        """.format(instance_ip)
-                                        )
-                            except Exception as e:
-                                st.markdown(
-                                    f'<div style="padding: 0.75rem; background: rgba(239, 68, 68, 0.1); border-left: 3px solid rgba(239, 68, 68, 0.8); border-radius: 6px; margin: 0.5rem 0; color: #fca5a5;"><i class="fas fa-times-circle" style="margin-right: 0.5rem; color: #ef4444;"></i> Error testing connectivity: {str(e)[:200]}</div>',
-                                    unsafe_allow_html=True,
-                                )
-
-                        if show_ssh_tunnel:
-                            st.info(
-                                """
-                            **SSH Tunnel Setup Instructions:**
-                            
-                            1. **Open a new terminal/command prompt**
-                            
-                            2. **Start SSH tunnel:**
-                               ```bash
-                               python scripts/ssh_tunnel_helper.py --ip {} --key moses.pem
-                               ```
-                            
-                            3. **Keep the terminal open** (tunnel runs in foreground)
-                            
-                            4. **Update API Endpoint to:**
-                               ```
-                               http://localhost:8000/v1/chat/completions
-                               ```
-                            
-                            5. **Click "START EVALUATION"** - the tunnel will forward requests to the instance
-                            
-                            6. **To stop tunnel:** Press Ctrl+C in the terminal
-                            
-                            **Or use security group configuration:**
-                            - Run: `python scripts/configure_security_group.py`
-                            - Follow the instructions to open port 8000
-                            """.format(instance_ip)
-                            )
-
-                            # Provide copy-paste command
-                            st.code(
-                                f"python scripts/ssh_tunnel_helper.py --ip {instance_ip} --key moses.pem",
-                                language="bash",
-                            )
-
-                            # Test connectivity with current endpoint
-                            st.markdown("---")
-                            st.markdown("**Or test connectivity first:**")
-                            if st.button("Test Current Endpoint", key="test_current"):
-                                from scripts.ssh_tunnel_helper import test_api_endpoint
-
-                                success, message = test_api_endpoint(
-                                    api_endpoint, timeout=5.0
-                                )
-                                if success:
-                                    st.markdown(
-                                        f'<div style="padding: 0.75rem; background: rgba(34, 197, 94, 0.1); border-left: 3px solid rgba(34, 197, 94, 0.8); border-radius: 6px; margin: 0.5rem 0; color: #86efac;"><i class="fas fa-check-circle" style="margin-right: 0.5rem; color: #22c55e;"></i> {message}</div>',
-                                        unsafe_allow_html=True,
-                                    )
-                                else:
-                                    st.markdown(
-                                        f'<div style="padding: 0.75rem; background: rgba(239, 68, 68, 0.1); border-left: 3px solid rgba(239, 68, 68, 0.8); border-radius: 6px; margin: 0.5rem 0; color: #fca5a5;"><i class="fas fa-times-circle" style="margin-right: 0.5rem; color: #ef4444;"></i> {message}</div>',
-                                        unsafe_allow_html=True,
-                                    )
-                                    st.markdown(
-                                        '<div style="padding: 0.75rem; background: rgba(6, 182, 212, 0.1); border-left: 3px solid rgba(6, 182, 212, 0.6); border-radius: 6px; margin: 0.5rem 0; color: #a5f3fc;"><i class="fas fa-lightbulb" style="margin-right: 0.5rem; color: #06b6d4;"></i> Consider using SSH tunnel as workaround</div>',
-                                        unsafe_allow_html=True,
-                                    )
-                else:
-                    st.error("Please configure defender properly")
-                    st.stop()
+                st.markdown(
+                    f'<div style="padding: 0.75rem; background: rgba(34, 197, 94, 0.1); border-left: 3px solid rgba(34, 197, 94, 0.8); border-radius: 6px; margin: 0.5rem 0; color: #86efac;"><i class="fas fa-check-circle" style="margin-right: 0.5rem; color: #22c55e;"></i> Defender configured: {model_name}</div>',
+                    unsafe_allow_html=True,
+                )
 
                 st.session_state.arena.add_defender(defender)
 
