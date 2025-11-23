@@ -552,20 +552,6 @@ st.markdown(
         margin-right: 0.5rem;
     }
     
-    button[data-testid*="ssh_tunnel"]::before {
-        content: "\\f0c1";
-        font-family: "Font Awesome 6 Free";
-        font-weight: 900;
-        margin-right: 0.5rem;
-    }
-    
-    button[data-testid*="test_current"]::before {
-        content: "\\f002";
-        font-family: "Font Awesome 6 Free";
-        font-weight: 900;
-        margin-right: 0.5rem;
-    }
-    
     /* Status indicators */
     .status-running::before {
         content: "\\f2f9";
@@ -1112,28 +1098,7 @@ def main():
     default_instance = ""
     default_endpoint = ""
 
-    # Load instance discovery data to check which instances need SSH tunnels
-    instance_access_info = {}
-    if instance_discovery_path.exists():
-        try:
-            with open(instance_discovery_path, "r") as f:
-                discovery_data = json.load(f)
-                for inst in discovery_data:
-                    instance_id = inst.get("instance_id")
-                    if instance_id:
-                        instance_access_info[instance_id] = {
-                            "direct_api": inst.get("access", {}).get(
-                                "direct_api", True
-                            ),
-                            "ssh_tunnel_needed": inst.get("access", {}).get(
-                                "ssh_tunnel_needed", False
-                            ),
-                            "ssh_tunnel_endpoint": inst.get("endpoints", {}).get(
-                                "ssh_tunnel", ""
-                            ),
-                        }
-        except Exception as e:
-            log.debug(f"Error loading instance discovery: {e}")
+    # Note: Old instance discovery for SSH tunnels removed - we now use direct Modal endpoints
 
     # Load all active instances (for scraper)
     active_instances = []
@@ -1333,65 +1298,47 @@ def main():
         else:
             difficulty_range = None
 
-        # Attacker Setup (Optional) - Simplified
-        st.subheader("Attacker Model (Optional)")
-        use_llm_attacker = st.checkbox(
-            "Use LLM-based Attacker",
-            value=False,
-            help="Use an LLM model to generate attack prompts instead of rule-based generation",
+        # Attacker Setup (Required)
+        st.subheader("Attacker Model")
+        attacker_model_key = st.selectbox(
+            "Select Attacker Model",
+            list(AVAILABLE_MODELS.keys()),
+            index=1 if len(AVAILABLE_MODELS) > 1 else 0,
+            key="attacker_model_key",
+            help="Choose the model to generate jailbreak attacks",
         )
 
-        attacker_model_name = None
-        attacker_instance_id = None
-        attacker_api_endpoint = None
+        attacker_config = AVAILABLE_MODELS[attacker_model_key]
+        attacker_model_name = attacker_config["model_name"]
+        attacker_api_endpoint = attacker_config.get("endpoint")
+        attacker_type = attacker_config["type"]
 
-        if use_llm_attacker:
-            attacker_model_key = st.selectbox(
-                "Select Attacker Model",
-                list(AVAILABLE_MODELS.keys()),
-                key="attacker_model_key",
-                help="Choose the model to generate jailbreak attacks",
-            )
+        st.markdown(f"**{attacker_config['display_name']}**")
+        st.caption(attacker_config["description"])
+        if attacker_api_endpoint:
+            with st.expander("📡 Endpoint Details"):
+                st.code(attacker_api_endpoint, language="text")
 
-            attacker_config = AVAILABLE_MODELS[attacker_model_key]
-            attacker_model_name = attacker_config["model_name"]
-            attacker_api_endpoint = attacker_config.get("endpoint")
-            attacker_instance_id = attacker_config.get("instance_id")
-
-            st.caption(f"{attacker_config['display_name']}")
-            if attacker_api_endpoint:
-                with st.expander("📡 Endpoint"):
-                    st.code(attacker_api_endpoint, language="text")
-
-        # Evaluator Setup (Optional) - Simplified
-        st.subheader("Evaluator Model (Optional)")
-        use_llm_evaluator = st.checkbox(
-            "Use LLM-based Evaluator",
-            value=False,
-            help="Use an LLM model to evaluate responses instead of rule-based classification",
+        # Evaluator Setup (Required) - Judge Model
+        st.subheader("Judge Model")
+        evaluator_model_key = st.selectbox(
+            "Select Judge Model",
+            list(AVAILABLE_MODELS.keys()),
+            index=2 if len(AVAILABLE_MODELS) > 2 else 0,
+            key="evaluator_model_key",
+            help="Choose the model to evaluate jailbreak responses",
         )
 
-        evaluator_model_name = None
-        evaluator_instance_id = None
-        evaluator_api_endpoint = None
+        evaluator_config = AVAILABLE_MODELS[evaluator_model_key]
+        evaluator_model_name = evaluator_config["model_name"]
+        evaluator_api_endpoint = evaluator_config.get("endpoint")
+        evaluator_type = evaluator_config["type"]
 
-        if use_llm_evaluator:
-            evaluator_model_key = st.selectbox(
-                "Select Evaluator Model",
-                list(AVAILABLE_MODELS.keys()),
-                key="evaluator_model_key",
-                help="Choose the model to evaluate jailbreak responses",
-            )
-
-            evaluator_config = AVAILABLE_MODELS[evaluator_model_key]
-            evaluator_model_name = evaluator_config["model_name"]
-            evaluator_api_endpoint = evaluator_config.get("endpoint")
-            evaluator_instance_id = evaluator_config.get("instance_id")
-
-            st.caption(f"{evaluator_config['display_name']}")
-            if evaluator_api_endpoint:
-                with st.expander("📡 Endpoint"):
-                    st.code(evaluator_api_endpoint, language="text")
+        st.markdown(f"**{evaluator_config['display_name']}**")
+        st.caption(evaluator_config["description"])
+        if evaluator_api_endpoint:
+            with st.expander("📡 Endpoint Details"):
+                st.code(evaluator_api_endpoint, language="text")
 
         # Lambda Scraper config - simplified
         st.subheader("Intelligence Gathering")
@@ -1428,42 +1375,40 @@ def main():
     if start_battle or st.session_state.battle_running:
         # Initialize arena with threat intelligence enabled
         if not st.session_state.arena:
-            # Initialize LLM attacker if configured
+            # Initialize LLM attacker (required)
             llm_attacker = None
-            if use_llm_attacker and attacker_model_name and attacker_instance_id:
+            if attacker_type == "mock":
+                # Mock attacker - uses rule-based generation
+                llm_attacker = None
+            elif attacker_type == "modal" and attacker_api_endpoint:
                 try:
                     from src.attackers.llm_attacker import LLMAttacker
 
                     llm_attacker = LLMAttacker(
                         model_name=attacker_model_name,
-                        model_type="local",
-                        use_lambda=True,
-                        lambda_instance_id=attacker_instance_id,
-                        lambda_api_endpoint=attacker_api_endpoint,
+                        model_type="vllm",
+                        api_endpoint=attacker_api_endpoint,
                     )
-                    log.info(
-                        f"Initialized LLM attacker: {attacker_model_name} on instance {attacker_instance_id}"
-                    )
+                    log.info(f"Initialized LLM attacker: {attacker_model_name}")
                 except Exception as e:
                     log.error(f"Error initializing LLM attacker: {e}")
                     st.warning(f"Failed to initialize LLM attacker: {e}")
 
-            # Initialize LLM evaluator if configured
+            # Initialize LLM evaluator/judge (required)
             llm_evaluator = None
-            if use_llm_evaluator and evaluator_model_name and evaluator_instance_id:
+            if evaluator_type == "mock":
+                # Mock evaluator - uses rule-based classification
+                llm_evaluator = None
+            elif evaluator_type == "modal" and evaluator_api_endpoint:
                 try:
                     from src.referee.llm_evaluator import LLMEvaluator
 
                     llm_evaluator = LLMEvaluator(
                         model_name=evaluator_model_name,
-                        model_type="local",
-                        use_lambda=True,
-                        lambda_instance_id=evaluator_instance_id,
-                        lambda_api_endpoint=evaluator_api_endpoint,
+                        model_type="vllm",
+                        api_endpoint=evaluator_api_endpoint,
                     )
-                    log.info(
-                        f"Initialized LLM evaluator: {evaluator_model_name} on instance {evaluator_instance_id}"
-                    )
+                    log.info(f"Initialized LLM evaluator/judge: {evaluator_model_name}")
                 except Exception as e:
                     log.error(f"Error initializing LLM evaluator: {e}")
                     st.warning(f"Failed to initialize LLM evaluator: {e}")
@@ -1720,7 +1665,7 @@ def main():
         with st.spinner("Setting up Defender"):
             try:
                 if defender_type == "Mock (Demo)":
-
+                    # Mock defender for testing
                     class SimpleMockDefender(LLMDefender):
                         async def generate_response(self, prompt, **kwargs):
                             prompt_lower = prompt.lower()
@@ -1745,16 +1690,38 @@ def main():
                     defender = SimpleMockDefender(
                         model_name="demo-model-v1", model_type="mock"
                     )
-                elif defender_type == "OpenAI" and api_key:
+                elif defender_type == "modal":
+                    # Modal vLLM endpoint
+                    if not api_endpoint:
+                        st.error("Modal endpoint is not configured properly")
+                        st.stop()
+
                     defender = LLMDefender(
-                        model_name=model_name, model_type="openai", api_key=api_key
+                        model_name=model_name,
+                        model_type="vllm",
+                        api_endpoint=api_endpoint,
                     )
-                elif defender_type == "Anthropic" and api_key:
-                    defender = LLMDefender(
-                        model_name=model_name, model_type="anthropic", api_key=api_key
+
+                    st.markdown(
+                        f'<div style="padding: 0.75rem; background: rgba(34, 197, 94, 0.1); border-left: 3px solid rgba(34, 197, 94, 0.8); border-radius: 6px; margin: 0.5rem 0; color: #86efac;"><i class="fas fa-check-circle" style="margin-right: 0.5rem; color: #22c55e;"></i> Defender configured: {model_name}</div>',
+                        unsafe_allow_html=True,
                     )
-                elif defender_type == "Lambda Cloud" and instance_id:
-                    # Get instance IP if endpoint not provided
+                    st.markdown(
+                        f'<div style="padding: 0.75rem; background: rgba(6, 182, 212, 0.1); border-left: 3px solid rgba(6, 182, 212, 0.6); border-radius: 6px; margin: 0.5rem 0; color: #a5f3fc;"><i class="fas fa-map-marker-alt" style="margin-right: 0.5rem; color: #06b6d4;"></i> Endpoint: {api_endpoint}</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    # Old configuration type no longer supported
+                    st.error(
+                        "This configuration type is no longer supported. "
+                        "Please select a model from the dropdown that uses Modal endpoints directly."
+                    )
+                    st.stop()
+
+                # Handle any remaining old config attempts
+                if False and defender_type == "Lambda Cloud" and instance_id:
+                    # This block is kept for reference but never executed
+                    instance_ip = None  # Placeholder for old code
                     if not api_endpoint:
                         try:
                             from src.integrations.lambda_cloud import LambdaCloudClient
