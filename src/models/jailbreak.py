@@ -8,6 +8,7 @@ from enum import Enum
 
 class AttackStrategy(str, Enum):
     """Attack strategy types."""
+    # Semantic attacks
     ROLEPLAY = "roleplay"
     EMOTIONAL_COERCION = "emotional_coercion"
     TRANSLATION_ATTACK = "translation_attack"
@@ -19,6 +20,16 @@ class AttackStrategy(str, Enum):
     POLICY_PROBING = "policy_probing"
     HONEYPOT = "honeypot"
     PERMISSION_EXPLOITATION = "permission_exploitation"
+    # Specialized defense-focused agents
+    BIO_HAZARD = "bio_hazard"  # Bio-Radar: Pathogen synthesis testing
+    CYBER_EXPLOIT = "cyber_exploit"  # Cyber-Sentinel: Zero-day hunting
+
+    # Optimization-based attacks (new)
+    GCG = "gcg"  # Greedy Coordinate Gradient
+    PAIR = "pair"  # Prompt Automatic Iterative Refinement
+    CIPHER = "cipher"  # Encoded/obfuscated attacks
+    ASCII_ART = "ascii_art"  # ASCII art obfuscation
+    GLITCH_TOKENS = "glitch_tokens"  # Tokenizer confusion
 
 
 class ViolationDomain(str, Enum):

@@ -43,7 +43,7 @@ async def run_demo():
     """Run the full Jailbreak Arena demo!"""
     
     print("=" * 70)
-    print("🎯 JAILBREAK GENOME SCANNER & ARENA - DEMO MODE 🎯")
+    print("JAILBREAK GENOME SCANNER - ACTIVE DEFENSE INFRASTRUCTURE - DEMO MODE")
     print("=" * 70)
     
     # Step 1: Initialize Arena
@@ -123,7 +123,7 @@ async def run_demo():
     
     # Display attacker leaderboard
     if results.get('leaderboard'):
-        print("\n📊 Top Attackers:")
+        print("\nTop Attackers:")
         top_attackers = results['leaderboard'].top_attackers[:5]
         for i, attacker in enumerate(top_attackers, 1):
             print(f"  {i}. {attacker.name} - {attacker.total_points:.1f} points "
@@ -136,7 +136,7 @@ async def run_demo():
     ][:3]
     
     if successful_exploits:
-        print("\n🔍 Example Successful Exploits:")
+        print("\nExample Successful Exploits:")
         for i, exploit in enumerate(successful_exploits, 1):
             print(f"\n  Exploit #{i}:")
             print(f"    Strategy: {exploit.attack_strategy.value}")
@@ -146,7 +146,7 @@ async def run_demo():
     
     # Generate Genome Map if we have exploits
     if successful_exploits:
-        print("\n🧬 Generating Genome Map...")
+        print("\nGenerating Threat Radar...")
         try:
             map_generator = GenomeMapGenerator()
             genome_map = map_generator.generate(successful_exploits, min_cluster_size=1)
@@ -159,20 +159,20 @@ async def run_demo():
                 map_generator.visualize(genome_map, output_path=output_path, show_plot=False)
                 print(f"✓ Genome Map saved to: {output_path}")
             else:
-                print("⚠️  Not enough exploits to generate meaningful clusters")
+                print("WARNING: Not enough exploits to generate meaningful clusters")
         except Exception as e:
-            print(f"⚠️  Could not generate Genome Map: {e}")
+            print(f"WARNING: Could not generate Threat Radar: {e}")
     
     # Export results
-    print("\n💾 Exporting results...")
+    print("\nExporting results...")
     arena.export_results("demo_results.json")
     print("✓ Results exported to: demo_results.json")
     
     # Final summary
     print("\n" + "=" * 70)
-    print("🎉 DEMO COMPLETE! 🎉")
+    print("DEMO COMPLETE")
     print("=" * 70)
-    print(f"\n📈 Summary:")
+    print(f"\nSummary:")
     print(f"  • JVI Score: {jvi:.2f}/100 ({jvi_category})")
     print(f"  • Total Evaluations: {results['statistics']['total_evaluations']}")
     print(f"  • Successful Exploits: {results['statistics']['total_exploits']}")
@@ -180,12 +180,12 @@ async def run_demo():
     print(f"  • Attackers Tested: {len(arena.attackers)}")
     print(f"  • Attack Strategies: {len(set(a.strategy for a in arena.attackers))}")
     
-    print("\n📁 Files Generated:")
+    print("\nFiles Generated:")
     print("  • demo_results.json - Full evaluation results")
     if successful_exploits:
-        print("  • genome_map_demo.png - Vulnerability visualization")
+        print("  • genome_map_demo.png - Threat Radar visualization")
     
-    print("\n🚀 Next Steps:")
+    print("\nNext Steps:")
     print("  1. Review demo_results.json for detailed results")
     print("  2. Check genome_map_demo.png for vulnerability clusters")
     print("  3. Try with real models using OpenAI/Anthropic APIs")
@@ -200,15 +200,15 @@ async def main():
     try:
         await run_demo()
     except KeyboardInterrupt:
-        print("\n\n⚠️  Demo interrupted by user")
+        print("\n\nDemo interrupted by user")
     except Exception as e:
-        print(f"\n\n❌ Error running demo: {e}")
+        print(f"\n\nError running demo: {e}")
         import traceback
         traceback.print_exc()
 
 
 if __name__ == "__main__":
-    print("\n🚀 Starting Jailbreak Arena Demo...")
+    print("\nStarting Jailbreak Genome Scanner Demo...")
     print("   This will run a quick evaluation with a mock model.\n")
     
     asyncio.run(main())

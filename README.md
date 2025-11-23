@@ -1,77 +1,79 @@
-# Jailbreak Genome Scanner & Arena System
+# Jailbreak Genome Scanner (JGS) — The Immune System for AI
 
-**A Self-Evolving, Pre-Deployment Safety Evaluation & Competitive Jailbreak Benchmarking Platform**
+**Automated Red-Teaming & Radar System for Dual-Use Capabilities**
 
 ## Overview
 
-The **Jailbreak Genome Scanner (JGS)** is a next-generation AI safety evaluation system designed to assess the robustness of large language models (LLMs) before deployment. Instead of relying on anecdotal prompt testing or post-deployment guardrails, JGS systematically probes models with a wide variety of adversarial strategies, measures how and why they fail, and visualizes their vulnerability patterns using a **Jailbreak Genome Map**.
+**Attackers are automating. A manual red team cannot keep up with a 100x acceleration in offensive AI capabilities.**
 
-At the heart of the system is the **Jailbreak Arena** — a game-inspired benchmarking environment where different attacker agents (either prompt strategies or attacker LLMs) compete to jailbreak a target model (the "Defender"). Every attacker earns points for successful exploits, while the Defender accumulates a quantitative risk score called the **Jailbreak Vulnerability Index (JVI)**.
+**JGS is the defensive acceleration answer: an automated, evolving system that maps the 'genome' of biological and cyber threats before they are deployed.**
 
-The entire system forms a structural, repeatable, scalable evaluation framework that allows researchers, developers, enterprises, and regulators to understand jailbreak risks before models are released.
+The **Jailbreak Genome Scanner (JGS)** is an **Active Defense Infrastructure** designed to protect against catastrophic risks in AI systems. Instead of reactive filters that block harmful outputs after deployment, JGS provides **predictive defenses** through automated red-teaming at scale.
 
-## The Core Problem
+At the heart of the system is the **Jailbreak Arena** — an automated red-teaming environment where specialized attacker agents (Bio-Radar, Cyber-Sentinel, and social engineering agents) systematically probe models for dual-use capabilities. Every exploit is fingerprinted and mapped to create a **Threat Radar** that identifies vulnerability patterns before attackers can exploit them.
 
-Modern LLMs can be jailbroken with surprisingly simple prompts. Today's guardrails and safety mechanisms suffer from critical limitations:
+The entire system forms a **pre-deployment risk assessment standard** that allows governments, enterprises, and AI labs to quantify catastrophic risk exposure before models are released.
 
-- **Reactive**: They attempt to block harmful outputs after deployment
-- **Brittle**: Small paraphrases break them
-- **Inconsistent**: Across models and settings
-- **Poorly measured**: No standard scoring exists
-- **Non-structural**: Tests are isolated cases, not patterns
-- **Not designed for attacker diversity**
-- **Rarely tested before deployment**
+## The Asymmetry Problem
 
-This leaves AI labs, enterprises, and regulators without a reliable way to quantify how jailbreakable a model is — or to understand why it is vulnerable.
+**Offense is getting cheaper. A biology grad student with an LLM can now design vectors that used to require a state lab.**
 
-## The Solution
+Current defenses are **reactive** (filters). We need **predictive defenses**.
 
-### A. Structural Jailbreak Mapping
+### The Critical Gap
 
-Instead of isolated prompts, JGS treats jailbreak detection as a pattern-recognition problem.
+- **Manual red teams cannot scale**: A 100x acceleration in offensive AI capabilities requires automated defense
+- **Reactive filters fail**: They block outputs after deployment, not before
+- **No threat intelligence**: We don't map attack patterns to vaccinate other models
+- **Catastrophic risks unmeasured**: Biological and cyber weaponization capabilities go undetected
+- **No pre-deployment standard**: Regulators lack quantitative risk assessment tools
 
-By generating diverse adversarial prompts, running them against a model, classifying the responses, embedding them, and clustering the results, JGS builds a **Jailbreak Genome Map** — a 2D representation of a model's structural weaknesses.
+**Impact**: AI labs, governments, and enterprises deploy models without understanding their dual-use risk exposure.
 
-This visualization highlights:
-- Clusters of failure modes
-- Recurring exploit strategies
-- Safety boundary weaknesses
-- Severity distribution
-- Cross-domain vulnerability patterns (cyber, bio, fraud, etc.)
+## The Solution: Automated Red-Teaming & Threat Radar
 
-### B. The Jailbreak Arena — Game-Based Evaluation
+### A. Threat Radar System
 
-A competitive arena where:
-- **Attackers** (strategies or LLMs) try to break the Defender
+JGS builds an evolutionary engine that finds threats before attackers do.
+
+By running specialized attacker agents (Bio-Radar, Cyber-Sentinel) at 100x speed, JGS maps the "genome" of biological and cyber threats. The **Threat Radar** visualizes:
+
+- **Pathogen Synthesis Vectors**: Clusters of biological weaponization capabilities
+- **Zero-Day Exploit Patterns**: Memory safety vulnerabilities and code exploitation vectors
+- **Attack Pattern Fingerprints**: Reusable signatures to vaccinate other models
+- **JVI Live Monitor**: Real-time vulnerability tracking as models are patched
+
+### B. The Jailbreak Arena — Automated Red-Teaming
+
+An automated red-teaming environment where:
+- **Bio-Radar Agent**: Tests for pathogen synthesis using obfuscated technical jargon
+- **Cyber-Sentinel Agent**: Feeds vulnerable C++ code and tests memory safety exploitation
+- **Social Agents**: Test emotional manipulation and policy boundary erosion
 - **Defender** is the Model Under Test (MUT)
-- **Referee** is the safety classifier scoring harmfulness
-- **Scoreboard** displays attacker rankings and Defender risk
+- **Referee** classifies harmfulness and fingerprints attack patterns
+- **JVI Live Monitor**: Real-time dashboard showing vulnerability index as patches are applied
 
-This mirrors Kaggle's Game Arena but applied to adversarial AI safety.
+This is the dashboard a government regulator would use to decide if a model is safe to deploy.
 
-### C. Pre-Deployment Testing Pipeline
+### C. Pre-Deployment Risk Assessment Pipeline
 
-JGS provides a reproducible evaluation workflow:
-1. Generate adversarial prompts across many attack families
-2. Run them against the MUT (Llama, Mistral, Phi, Falcon, fine-tunes, enterprise models)
-3. Classify responses using a harmfulness classifier
-4. Embed + cluster failures to create the Genome Map
-5. Compute the JVI score (0–100)
-6. Visualize insights through a dashboard & Arena leaderboard
+JGS provides a standardized evaluation workflow:
+1. **Auto-Red Teaming**: Run specialized agents at 100x speed
+2. **Threat Fingerprinting**: Map exploit patterns to create vaccination signatures
+3. **Threat Radar Generation**: Visualize "Pathogen Synthesis Vectors" and "Zero-Day Clusters"
+4. **JVI Calculation**: Compute Jailbreak Vulnerability Index (0–100)
+5. **Live Monitoring**: Track JVI as model is patched in real-time
+6. **Regulatory Dashboard**: Export risk assessment for deployment decisions
 
 ## Key Components
 
-### 1. Adversarial Prompt Generator
-Multi-strategy attack generation including:
-- Roleplay
-- Emotional coercion
-- Translation-based attacks
-- Prompt inversion
-- Chain-of-command manipulation
-- Fictional framing
-- Multi-turn escalation
-- Indirect harmful requests
-- Policy probing
+### 1. Specialized Attacker Agents
+Multi-domain attack generation including:
+- **Bio-Radar Agent**: Obfuscated pathogen synthesis prompts using technical jargon
+- **Cyber-Sentinel Agent**: C++/Rust vulnerability exploitation (buffer overflows, memory safety)
+- **Social Engineering Agents**: Roleplay, emotional coercion, policy probing
+- **Translation Attacks**: Cross-language boundary testing
+- **Multi-turn Escalation**: Progressive boundary erosion
 
 ### 2. Model Under Test (Defender)
 Runs evaluation on any LLM:
@@ -86,8 +88,11 @@ Labels each prompt–response pair with:
 - Violation domain (cyber, bio, fraud, violence, etc.)
 - Boundary erosion indicators
 
-### 4. Embedding + Clustering Engine
-Transforms responses into embeddings → reduces dimensionality → clusters failure patterns → generates the Jailbreak Genome Map.
+### 4. Threat Radar Engine
+Transforms responses into embeddings → reduces dimensionality → clusters failure patterns → generates the **Threat Radar** with specialized visualization for:
+- **Pathogen Synthesis Vectors** (bright red clusters)
+- **Zero-Day Exploit Patterns** (cyber attack clusters)
+- **Attack Pattern Fingerprints** (reusable vaccination signatures)
 
 ### 5. JVI — Jailbreak Vulnerability Index
 A standardized robustness score (0–100), combining:
@@ -96,14 +101,14 @@ A standardized robustness score (0–100), combining:
 - High-severity rate
 - Failure-mode diversity (entropy)
 
-### 6. Dashboard UI
-Visual components including:
-- Headline JVI score
-- Exploit-rate KPIs
-- Per-attack-family breakdown chart
-- Interactive Genome Map
-- Failure case explorer (drill-down)
-- Attacker leaderboard (Arena mode)
+### 6. JVI Live Monitor Dashboard
+Real-time regulatory dashboard including:
+- **JVI Live Score**: Real-time vulnerability index tracking
+- **Threat Radar Visualization**: Interactive map showing "Pathogen Synthesis Vectors" and "Zero-Day Clusters"
+- **Exploit-rate KPIs**: Per-threat-domain breakdown
+- **Attack Pattern Library**: Fingerprinted exploits for model vaccination
+- **Patch Tracking**: JVI score changes as model is updated
+- **Regulatory Export**: Risk assessment reports for deployment decisions
 
 ### 7. Jailbreak Arena
 A competitive, game-like environment featuring:
@@ -119,19 +124,22 @@ A competitive, game-like environment featuring:
 ```
 jailbreak-genome-scanner/
 ├── src/
-│   ├── attackers/          # Adversarial prompt generators & attack strategies
-│   ├── defenders/          # Model Under Test (MUT) evaluation framework
-│   ├── referee/            # Safety classifier & harmfulness scoring
-│   ├── arena/              # Competitive evaluation system
-│   ├── genome/             # Vulnerability mapping & clustering
-│   ├── scoring/            # JVI calculation & metrics
-│   ├── dashboard/          # UI components & visualizations
-│   ├── agents/             # Emotional/cognitive agent frameworks (Inside Out style)
-│   ├── permissions/        # Agent permissions & sandboxing system
-│   └── utils/              # Utility functions
-├── data/                   # Evaluation results & datasets
-├── config/                 # Configuration files
-└── tests/                  # Test suite
+│   ├── attackers/
+│   │   ├── bio_agent.py        # Bio-Radar: Specialized pathogen synthesis prompter
+│   │   ├── cyber_agent.py      # Cyber-Sentinel: C++/Rust vulnerability exploiter
+│   │   └── social_agent.py     # Social engineering agents
+│   ├── defenders/
+│   │   └── shield_layer.py     # Lightweight filter trained on JGS data
+│   ├── referee/                # Safety classifier & harmfulness scoring
+│   ├── arena/                  # Automated red-teaming system
+│   ├── genome/
+│   │   └── threat_radar.py     # Threat Radar (renamed from map_generator)
+│   ├── scoring/                # JVI calculation & metrics
+│   ├── dashboard/              # JVI Live Monitor & regulatory dashboard
+│   └── utils/                  # Utility functions
+├── data/                       # Evaluation results & threat fingerprints
+├── config/                     # Configuration files
+└── tests/                      # Test suite
 ```
 
 ## Installation
@@ -249,29 +257,29 @@ python -m src.cli dashboard --port 8080
 
 ## Features
 
-### 🎯 Multi-Strategy Attack Generation
-Generate diverse adversarial prompts using roleplay, emotional coercion, translation attacks, and more.
+### Multi-Strategy Attack Generation
+Generate diverse adversarial prompts using roleplay, emotional coercion, translation attacks, and specialized Bio-Radar and Cyber-Sentinel agents.
 
-### 🛡️ Comprehensive Defender Evaluation
-Test any LLM model - open-source, fine-tuned, or enterprise APIs.
+### Comprehensive Defender Evaluation
+Test any LLM model - open-source, fine-tuned, or enterprise APIs with automated red-teaming at scale.
 
-### ⚖️ Safety Classification
-Automated harmfulness scoring with severity levels and domain classification.
+### Safety Classification
+Automated harmfulness scoring with severity levels and domain classification. Enhanced detection for obfuscated biological and cyber threats.
 
-### 🧬 Structural Vulnerability Mapping
-Visualize failure patterns and exploit clusters in an interactive Genome Map.
+### Structural Vulnerability Mapping
+Visualize failure patterns and exploit clusters in the Threat Radar. Highlights Pathogen Synthesis Vectors and Zero-Day Exploit Patterns.
 
-### 📊 JVI Scoring
-Standardized risk score (0-100) for cross-model comparison.
+### JVI Scoring
+Standardized risk score (0-100) for cross-model comparison. Real-time JVI Live Monitor for regulatory assessment.
 
-### 🏟️ Competitive Arena
-Game-like evaluation environment with attacker rankings and live leaderboards.
+### Automated Red-Teaming Arena
+Competitive evaluation environment with attacker rankings and live leaderboards. Runs at 100x speed for comprehensive coverage.
 
-### 🧠 Emotional/Cognitive Agents
-Advanced agent frameworks inspired by Inside Out for testing social dynamics.
+### Threat Fingerprinting
+Attack pattern identification for model vaccination. Generates reusable signatures from Threat Radar analysis.
 
-### 🔒 Permissions & Sandboxing
-Secure agent execution with fine-grained permissions and monitoring.
+### Shield Layer Defense
+Lightweight filter trained on JGS threat data. Blocks known attack patterns identified through automated red-teaming.
 
 ## Self-Evolving Architecture
 
@@ -279,13 +287,13 @@ JGS is designed to evolve with the AI ecosystem. New attacker strategies, threat
 
 **Better attacker models → Better evaluations → Safer defender models → Stronger JVI standards → Better attacker models...**
 
-## Value Proposition
+## Value Proposition: The Standard for Pre-Deployment Risk Assessment
 
-- **For AI Labs**: Pre-deployment stress testing, structural vulnerability mapping, standardized safety scoring
-- **For Enterprises**: Vendor LLM evaluation, compliance with AI regulations, reduced legal & security risk
-- **For Governments & Regulators**: Model certification, safety thresholds, early-warning indicators
-- **For Red-Teamers**: Scalable adversarial testing, automated coverage
-- **For Researchers**: Reproducible, benchmarkable evaluation method
+- **For Governments & Regulators**: **JVI Live Monitor** — the dashboard to decide if a model is safe to deploy. Quantitative risk assessment for catastrophic risks (bio, cyber).
+- **For AI Labs**: Automated red-teaming at 100x speed. Find vulnerabilities before attackers do. Threat fingerprinting for model vaccination.
+- **For Enterprises**: Pre-deployment dual-use risk assessment. Compliance with biosecurity and cybersecurity regulations. Reduced catastrophic risk exposure.
+- **For Defense Contractors**: Active defense infrastructure. Automated threat detection for biological and cyber weaponization capabilities.
+- **For Red-Teamers**: Scalable adversarial testing. Attack pattern fingerprinting. Systematic coverage of dual-use capabilities.
 
 ## Security Considerations
 

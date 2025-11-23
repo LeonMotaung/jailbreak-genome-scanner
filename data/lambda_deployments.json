@@ -33,7 +33,7 @@
       "region": "us-east-1",
       "status": "active",
       "launched_at": "2025-11-23T10:47:05.339784",
-      "api_endpoint": "http://150.136.220.151:8000/v1/chat/completions",
+      "api_endpoint": "http://localhost:8001/v1/chat/completions",
       "api_endpoint_local": "http://localhost:8001/v1/chat/completions",
       "cost_per_hour": 0.75,
       "vllm_running": true,
