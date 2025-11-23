@@ -1,0 +1,11 @@
+MODAL_ENDPOINTS = {
+    # Paste your Modal vLLM endpoint URLs here:
+    "MODAL_LLAMA2_7B_URL": "https://rogereo--example-vllm-inference-serve-llama2-7b-chat.modal.run",  # e.g., "https://workspace--app-serve-llama2-7b-chat.modal.run"
+    "MODAL_LLAMA2_13B_URL": "https://rogereo--example-vllm-inference-serve-llama2-13b-chat.modal.run",  # e.g., "https://workspace--app-serve-llama2-13b-chat.modal.run"
+    "MODAL_MISTRAL_7B_URL": "https://rogereo--example-vllm-inference-serve-mistral-7b-instruct.modal.run",  # e.g., "https://workspace--app-serve-mistral-7b-instruct.modal.run"
+    "MODAL_PHI2_URL": " https://rogereo--example-vllm-inference-serve-phi2.modal.run",  # e.g., "https://workspace--app-serve-phi2.modal.run"
+    "MODAL_QWEN_7B_URL": "https://rogereo--example-vllm-inference-serve-qwen-7b-chat.modal.run",  # e.g., "https://workspace--app-serve-qwen-8b.modal.run"
+    # Add more endpoints as needed:
+    # "MODAL_CUSTOM_MODEL_URL": "",
+    "MODAL_FALCON_7B": " https://rogereo--example-vllm-inference-serve-falcon-7b-instruct.modal.run"
+}
