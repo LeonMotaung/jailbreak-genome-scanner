@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     lambda_default_region: str = Field(
         default="us-east-1", alias="LAMBDA_DEFAULT_REGION"
     )
+    lambda_use_default_firewall: bool = Field(
+        default=True, alias="LAMBDA_USE_DEFAULT_FIREWALL"
+    )
+    lambda_filesystem_id: Optional[str] = Field(
+        default=None, alias="LAMBDA_FILESYSTEM_ID"
+    )
     
     # ChromaDB Configuration
     chroma_host: str = Field(default="localhost", alias="CHROMA_HOST")
@@ -80,6 +86,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Ignore extra environment variables
         
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
