@@ -25,12 +25,13 @@ class LLMEvaluator:
         
         Args:
             model_name: Name of the model (e.g., "mistralai/Mistral-7B-Instruct-v0.2")
-            api_endpoint: HTTP endpoint to query for evaluations
+            api_endpoint: Base URL for the OpenAI-compatible API (should end with /v1/ or /v1)
+                         Example: "https://example.modal.run/v1/"
         """
         self.model_name = model_name
         self.api_endpoint = api_endpoint
         
-        # Use LLMDefender infrastructure for making API calls
+        # Use LLMDefender infrastructure for making API calls (uses OpenAI SDK)
         self.llm_client = LLMDefender(
             model_name=model_name,
             api_endpoint=api_endpoint,

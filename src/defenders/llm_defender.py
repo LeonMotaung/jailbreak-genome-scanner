@@ -1,7 +1,7 @@
 """Model Under Test (Defender) evaluation framework."""
 
 from typing import Dict, Any, List, Optional
-import httpx
+from openai import AsyncOpenAI
 
 from src.models.jailbreak import DefenderProfile
 from src.utils.logger import log
@@ -17,7 +17,7 @@ class LLMDefender:
         
         Args:
             model_name: Name of the model (e.g., "gpt-4", "mistral-7b")
-            api_endpoint: Chat/completions endpoint that serves the model
+            api_endpoint: Base URL for the OpenAI-compatible API (should end with /v1/ or /v1)
         """
         if not api_endpoint:
             raise ValueError("api_endpoint is required for LLMDefender")
@@ -28,6 +28,19 @@ class LLMDefender:
         self._mock_mode = api_endpoint.startswith("mock://")
         self._default_timeout = getattr(settings, "llm_request_timeout", 60.0)
         
+        # Ensure endpoint ends with /v1 or /v1/ for OpenAI client
+        base_url = api_endpoint.rstrip('/')
+        if not base_url.endswith('/v1'):
+            base_url = f"{base_url}/v1"
+        
+        # Initialize OpenAI client with custom base URL
+        if not self._mock_mode:
+            self.client = AsyncOpenAI(
+                base_url=base_url,
+                api_key="dummy-key",  # vLLM doesn't require a real key
+                timeout=self._default_timeout,
+            )
+        
         # Create defender profile
         self.profile = DefenderProfile(
             id=f"defender_{model_name}",
@@ -36,10 +49,11 @@ class LLMDefender:
             model_path=api_endpoint,
             metadata={
                 "api_endpoint": api_endpoint,
+                "base_url": base_url if not self._mock_mode else api_endpoint,
             }
         )
         
-        log.info(f"Initialized defender: {model_name} ({self.model_type})")
+        log.info(f"Initialized defender: {model_name} ({self.model_type}) at {base_url if not self._mock_mode else api_endpoint}")
     
     async def generate_response(self, prompt: str, **kwargs) -> str:
         """
@@ -86,7 +100,7 @@ class LLMDefender:
         headers: Optional[Dict[str, str]] = None,
         **kwargs
     ) -> str:
-        """Call the configured API endpoint using OpenAI-compatible schema."""
+        """Call the configured API endpoint using OpenAI SDK."""
         messages: List[Dict[str, str]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -97,11 +111,13 @@ class LLMDefender:
         if extra_messages:
             messages.extend(extra_messages)
         
-        payload: Dict[str, Any] = {
+        # Build parameters for OpenAI API call
+        api_params: Dict[str, Any] = {
             "model": self.model_name,
             "messages": messages,
         }
         
+        # Add optional generation parameters if provided
         generation_params = [
             "temperature",
             "max_tokens",
@@ -111,42 +127,27 @@ class LLMDefender:
         ]
         for param in generation_params:
             if param in kwargs and kwargs[param] is not None:
-                payload[param] = kwargs[param]
+                api_params[param] = kwargs[param]
         
-        # Some endpoints still expect completion style payloads
-        if kwargs.get("use_completion_format"):
-            payload = {
-                "model": self.model_name,
-                "prompt": system_prompt + "\n\n" + prompt if system_prompt else prompt,
-            }
-            for param in generation_params:
-                if param in kwargs and kwargs[param] is not None:
-                    payload[param] = kwargs[param]
+        # Note: use_completion_format is not supported with OpenAI SDK chat completions
+        # vLLM endpoints should support chat completions format
         
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                self.api_endpoint,
-                json=payload,
-                headers=headers
-            )
-            response.raise_for_status()
-            data = response.json()
-        if not data:
-            raise RuntimeError("Empty response from LLM API")
-        result = None
-        if isinstance(data, dict) and "choices" in data and data["choices"]:
-            choice = data["choices"][0]
-            if isinstance(choice, dict):
-                if "message" in choice and choice["message"]:
-                    result = choice["message"].get("content", "").strip()
-                elif "text" in choice:
-                    result = str(choice["text"]).strip()
-        elif isinstance(data, dict) and "output" in data:
-            result = str(data["output"]).strip()
-        if result is not None:
-            log.info(f"LLM API raw response: {str(result)[:500]}")
-            return result
-        raise RuntimeError(f"Unexpected API response format: {data}")
+        try:
+            # Call OpenAI API using the SDK
+            response = await self.client.chat.completions.create(**api_params)
+            
+            # Extract the response content
+            if response.choices and len(response.choices) > 0:
+                result = response.choices[0].message.content
+                if result:
+                    log.info(f"LLM API raw response: {str(result)[:500]}")
+                    return result.strip()
+            
+            raise RuntimeError("No content in API response")
+            
+        except Exception as e:
+            log.error(f"Error calling OpenAI API: {e}")
+            raise RuntimeError(f"API call failed: {str(e)}")
     
     async def _generate_mock(self, prompt: str, **kwargs) -> str:
         """Generate mock response for testing."""
