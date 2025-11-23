@@ -26,25 +26,25 @@ AVAILABLE_MODELS = {
     "Mistral 7B": {
         "display_name": "Mistral 7B Instruct ",
         "model_name": "mistralai/Mistral-7B-Instruct-v0.2",
-        "endpoint": "https://rogereo--example-vllm-inference-serve-mistral-7b-instruct.modal.run",
+        "endpoint": "https://rogereo--example-vllm-inference-serve-mistral-7b-instruct.modal.run/v1/",
         "description": "High quality instruction-following model on Modal",
     },
     "Qwen 7B": {
         "display_name": "Qwen 7B Chat ",
         "model_name": "Qwen/Qwen-7B-Chat",
-        "endpoint": "https://rogereo--example-vllm-inference-serve-qwen-7b-chat.modal.run",
+        "endpoint": "https://rogereo--example-vllm-inference-serve-qwen-7b-chat.modal.run/v1/",
         "description": "Multilingual chat model on Modal",
     },
     "Phi-2": {
         "display_name": "Phi-2 ",
         "model_name": "microsoft/phi-2",
-        "endpoint": "https://rogereo--example-vllm-inference-serve-phi2.modal.run",
+        "endpoint": "https://rogereo--example-vllm-inference-serve-phi2.modal.run/v1/",
         "description": "Compact but capable model from Microsoft",
     },
     "Falcon 7B": {
         "display_name": "Falcon 7B Instruct ",
         "model_name": "tiiuae/falcon-7b-instruct",
-        "endpoint": "https://rogereo--example-vllm-inference-serve-falcon-7b-instruct.modal.run",
+        "endpoint": "https://rogereo--example-vllm-inference-serve-falcon-7b-instruct.modal.run/v1/",
         "description": "Open-source model from Technology Innovation Institute",
     },
 }

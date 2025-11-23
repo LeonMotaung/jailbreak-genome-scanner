@@ -49,10 +49,10 @@ vllm_image = (
 # We'll use an FP8 (eight-bit floating-point) post-training-quantized variant: Qwen/Qwen3-8B-FP8.
 # Native hardware support for FP8 formats in [Tensor Cores](https://modal.com/gpu-glossary/device-hardware/tensor-core)
 # is limited to the latest [Streaming Multiprocessor architectures](https://modal.com/gpu-glossary/device-hardware/streaming-multiprocessor-architecture),
-# like those of Modal's [Hopper H100/H200 and Blackwell B200 GPUs](https://modal.com/blog/announcing-h200-b200).
+# like those of Modal's [Hopper A10G/H200 and Blackwell B200 GPUs](https://modal.com/blog/announcing-h200-b200).
 
 # You can swap this model out for another by changing the strings below.
-# A single H100 GPU has enough VRAM to store an 8,000,000,000 parameter model,
+# A single A10G GPU has enough VRAM to store an 8,000,000,000 parameter model,
 # like Qwen3-8B, in eight bit precision, along with a very large KV cache.
 
 
@@ -114,7 +114,7 @@ VLLM_PORT = 8000
 # Llama 2 7B Chat
 # @app.function(
 #     image=vllm_image,
-#     gpu="H100",
+#     gpu="A10G",
 #     scaledown_window=15 * MINUTES,
 #     timeout=10 * MINUTES,
 #     volumes={
@@ -150,7 +150,7 @@ VLLM_PORT = 8000
 # Llama 2 13B Chat
 # @app.function(
 #     image=vllm_image,
-#     gpu="H100",
+#     gpu="A10G",
 #     scaledown_window=15 * MINUTES,
 #     timeout=10 * MINUTES,
 #     volumes={
@@ -186,7 +186,7 @@ VLLM_PORT = 8000
 # Mistral 7B Instruct
 @app.function(
     image=vllm_image,
-    gpu="H100",
+    gpu="A10G",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={
@@ -222,7 +222,7 @@ def serve_mistral_7b_instruct():
 # Microsoft Phi-2
 @app.function(
     image=vllm_image,
-    gpu="H100",
+    gpu="A100",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={
@@ -258,7 +258,7 @@ def serve_phi2():
 # Falcon 7B Instruct
 @app.function(
     image=vllm_image,
-    gpu="H100",
+    gpu="A10G",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={
@@ -294,7 +294,7 @@ def serve_falcon_7b_instruct():
 # Qwen 7B Chat
 @app.function(
     image=vllm_image,
-    gpu="H100",
+    gpu="A10G",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={

@@ -64,6 +64,7 @@ image = (
         "transformers>=4.36.0",
         "torch>=2.1.0",
         "accelerate>=0.25.0",
+        "openai",
         # Security
         "python-jose>=3.3.0",
         "cryptography>=42.0.0",
