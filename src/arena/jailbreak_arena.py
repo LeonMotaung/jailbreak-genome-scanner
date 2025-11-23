@@ -3,7 +3,7 @@
 import asyncio
 import uuid
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable, Tuple
 from collections import defaultdict
 from src.models.jailbreak import (
     EvaluationResult, AttackerProfile, DefenderProfile,
@@ -24,7 +24,8 @@ class JailbreakArena:
     def __init__(
         self,
         referee: Optional[SafetyClassifier] = None,
-        jvi_calculator: Optional[JVICalculator] = None
+        jvi_calculator: Optional[JVICalculator] = None,
+        use_pattern_database: bool = True
     ):
         """
         Initialize the Jailbreak Arena.
@@ -32,6 +33,7 @@ class JailbreakArena:
         Args:
             referee: Optional safety classifier (creates default if None)
             jvi_calculator: Optional JVI calculator (creates default if None)
+            use_pattern_database: Whether to use exploit pattern database for defense improvement
         """
         self.defender_registry = DefenderRegistry()
         self.attackers: List[AttackerProfile] = []
@@ -39,6 +41,16 @@ class JailbreakArena:
         self.referee = referee or SafetyClassifier()
         self.jvi_calculator = jvi_calculator or JVICalculator()
         self.genome_generator = GenomeMapGenerator()
+        
+        # Exploit pattern database for defense improvement
+        self.pattern_database = None
+        if use_pattern_database:
+            try:
+                from src.intelligence.pattern_database import ExploitPatternDatabase
+                self.pattern_database = ExploitPatternDatabase()
+                log.info("Exploit pattern database enabled for defense improvement")
+            except ImportError:
+                log.warning("Pattern database module not available, defense improvement disabled")
         
         # Evaluation history
         self.evaluation_history: List[EvaluationResult] = []
@@ -105,7 +117,8 @@ class JailbreakArena:
         self,
         rounds: Optional[int] = None,
         defenders: Optional[List[LLMDefender]] = None,
-        parallel: bool = True
+        parallel: bool = True,
+        progress_callback: Optional[callable] = None
     ) -> Dict[str, Any]:
         """
         Run evaluation rounds in the arena.
@@ -114,6 +127,7 @@ class JailbreakArena:
             rounds: Number of rounds to run (defaults to config)
             defenders: Optional list of specific defenders to test
             parallel: Whether to run evaluations in parallel
+            progress_callback: Optional callback function(round_num, total_rounds, round_results) for progress updates
             
         Returns:
             Evaluation results dictionary
@@ -142,6 +156,13 @@ class JailbreakArena:
             
             self.rounds.append(round_results)
             self.total_rounds += 1
+            
+            # Call progress callback if provided
+            if progress_callback:
+                try:
+                    progress_callback(round_num, rounds, round_results)
+                except Exception as e:
+                    log.warning(f"Progress callback error: {e}")
         
         # Calculate final scores
         results = self._compile_results(defenders_to_test)
@@ -153,7 +174,8 @@ class JailbreakArena:
         self,
         round_num: int,
         defenders: List[LLMDefender],
-        parallel: bool = True
+        parallel: bool = True,
+        on_evaluation_complete: Optional[Callable[[EvaluationResult, int], None]] = None
     ) -> ArenaRound:
         """
         Run a single arena round.
@@ -198,6 +220,12 @@ class JailbreakArena:
                     evaluation = await self._evaluate_pair(defender, attacker, prompt)
                     round_evaluations.append(evaluation)
                     self._update_scores(evaluation, attacker_scores)
+                    # Call callback for real-time updates
+                    if on_evaluation_complete:
+                        try:
+                            on_evaluation_complete(evaluation, round_num)
+                        except Exception as e:
+                            log.warning(f"Error in evaluation callback: {e}")
         
         # Wait for parallel tasks
         if parallel and tasks:
@@ -209,6 +237,15 @@ class JailbreakArena:
         # Update history
         self.evaluation_history.extend(round_evaluations)
         self.total_evaluations += len(round_evaluations)
+        
+        # Store successful exploits in pattern database for defense improvement
+        if hasattr(self, 'pattern_database') and self.pattern_database:
+            for evaluation in round_evaluations:
+                if evaluation.is_jailbroken:
+                    try:
+                        self.pattern_database.add_from_evaluation(evaluation)
+                    except Exception as e:
+                        log.warning(f"Error adding exploit pattern: {e}")
         
         # Count successful attacks
         successful_attacks = sum(1 for e in round_evaluations if e.is_jailbroken)
