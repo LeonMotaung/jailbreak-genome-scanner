@@ -105,7 +105,6 @@ FAST_BOOT = True
 
 app = modal.App("example-vllm-inference")
 
-N_GPU = 1
 MINUTES = 60  # seconds
 VLLM_PORT = 8000
 
@@ -115,7 +114,7 @@ VLLM_PORT = 8000
 # Llama 2 7B Chat
 @app.function(
     image=vllm_image,
-    gpu=f"H100:{N_GPU}",
+    gpu="A10G",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={
@@ -143,8 +142,6 @@ def serve_llama2_7b_chat():
         "--port",
         str(VLLM_PORT),
         "--enforce-eager" if FAST_BOOT else "--no-enforce-eager",
-        "--tensor-parallel-size",
-        str(N_GPU),
     ]
     subprocess.Popen(" ".join(cmd), shell=True)
 
@@ -152,7 +149,7 @@ def serve_llama2_7b_chat():
 # Llama 2 13B Chat
 @app.function(
     image=vllm_image,
-    gpu=f"H100:{N_GPU}",
+    gpu="A10G",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={
@@ -180,8 +177,6 @@ def serve_llama2_13b_chat():
         "--port",
         str(VLLM_PORT),
         "--enforce-eager" if FAST_BOOT else "--no-enforce-eager",
-        "--tensor-parallel-size",
-        str(N_GPU),
     ]
     subprocess.Popen(" ".join(cmd), shell=True)
 
@@ -189,7 +184,7 @@ def serve_llama2_13b_chat():
 # Mistral 7B Instruct
 @app.function(
     image=vllm_image,
-    gpu=f"H100:{N_GPU}",
+    gpu="A10G",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={
@@ -217,8 +212,6 @@ def serve_mistral_7b_instruct():
         "--port",
         str(VLLM_PORT),
         "--enforce-eager" if FAST_BOOT else "--no-enforce-eager",
-        "--tensor-parallel-size",
-        str(N_GPU),
     ]
     subprocess.Popen(" ".join(cmd), shell=True)
 
@@ -226,7 +219,7 @@ def serve_mistral_7b_instruct():
 # Microsoft Phi-2
 @app.function(
     image=vllm_image,
-    gpu=f"H100:{N_GPU}",
+    gpu="A10G",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={
@@ -254,8 +247,6 @@ def serve_phi2():
         "--port",
         str(VLLM_PORT),
         "--enforce-eager" if FAST_BOOT else "--no-enforce-eager",
-        "--tensor-parallel-size",
-        str(N_GPU),
     ]
     subprocess.Popen(" ".join(cmd), shell=True)
 
@@ -263,7 +254,7 @@ def serve_phi2():
 # Falcon 7B Instruct
 @app.function(
     image=vllm_image,
-    gpu=f"H100:{N_GPU}",
+    gpu="A10G",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={
@@ -291,8 +282,6 @@ def serve_falcon_7b_instruct():
         "--port",
         str(VLLM_PORT),
         "--enforce-eager" if FAST_BOOT else "--no-enforce-eager",
-        "--tensor-parallel-size",
-        str(N_GPU),
     ]
     subprocess.Popen(" ".join(cmd), shell=True)
 
@@ -300,7 +289,7 @@ def serve_falcon_7b_instruct():
 # Qwen 7B Chat
 @app.function(
     image=vllm_image,
-    gpu=f"H100:{N_GPU}",
+    gpu="A10G",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={
@@ -328,8 +317,6 @@ def serve_qwen_7b_chat():
         "--port",
         str(VLLM_PORT),
         "--enforce-eager" if FAST_BOOT else "--no-enforce-eager",
-        "--tensor-parallel-size",
-        str(N_GPU),
     ]
     subprocess.Popen(" ".join(cmd), shell=True)
 
@@ -352,6 +339,7 @@ MODELS = [
 
 
 # ## Deploy the server
+
 
 # To deploy the API on Modal, just run
 # ```bash
