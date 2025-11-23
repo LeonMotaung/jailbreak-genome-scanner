@@ -107,7 +107,9 @@ class LambdaCloudClient:
         instance_type: str,
         region: str = "us-east-1",
         quantity: int = 1,
-        ssh_key_names: Optional[List[str]] = None
+        ssh_key_names: Optional[List[str]] = None,
+        filesystem_id: Optional[str] = None,
+        use_default_firewall: bool = True
     ) -> Optional[Dict[str, Any]]:
         """
         Launch a new Lambda Cloud instance.
@@ -117,6 +119,8 @@ class LambdaCloudClient:
             region: Region to launch in
             quantity: Number of instances to launch
             ssh_key_names: Optional list of SSH key names. If None, will try to use first available key.
+            filesystem_id: Optional filesystem ID to attach. If None, uses instance's own filesystem.
+            use_default_firewall: Use default firewall/security group settings (default: True)
             
         Returns:
             Instance data or None if failed
@@ -135,18 +139,33 @@ class LambdaCloudClient:
                 log.error("No SSH keys found. Please add an SSH key in Lambda Cloud dashboard first.")
                 return None
         
+        # Build launch payload
+        launch_payload = {
+            "instance_type_name": instance_type,
+            "region_name": region,
+            "quantity": quantity,
+            "ssh_key_names": ssh_key_names
+        }
+        
+        # Add filesystem if specified
+        if filesystem_id:
+            launch_payload["filesystem_id"] = filesystem_id
+            log.info(f"Attaching filesystem: {filesystem_id}")
+        else:
+            log.info("Using instance's own filesystem (no external filesystem attached)")
+        
+        # Note: Lambda Cloud uses default firewall/security group by default
+        # If you need custom firewall, configure it after launch via dashboard
+        if use_default_firewall:
+            log.info("Using default firewall/security group settings")
+        
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
                     f"{self.base_url}/instance-operations/launch",
                     auth=(self.api_key, ""),  # HTTP Basic Auth
                     headers={"Content-Type": "application/json"},
-                    json={
-                        "instance_type_name": instance_type,
-                        "region_name": region,
-                        "quantity": quantity,
-                        "ssh_key_names": ssh_key_names
-                    }
+                    json=launch_payload
                 )
                 response.raise_for_status()
                 data = response.json()

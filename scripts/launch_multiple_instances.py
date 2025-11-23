@@ -4,14 +4,19 @@ import asyncio
 import json
 import sys
 import io
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from dotenv import load_dotenv
 
 # Fix Windows console encoding
 if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+# Load environment variables
+load_dotenv()
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -118,11 +123,19 @@ class MultiInstanceLauncher:
         log.info(f"   Instance type: {instance_type}")
         log.info(f"   Cost: ${model_config['cost_per_hour']}/hour")
         
-        # Launch instance
+        # Get configuration from environment or use defaults
+        use_default_firewall = os.getenv("LAMBDA_USE_DEFAULT_FIREWALL", "true").lower() == "true"
+        filesystem_id = os.getenv("LAMBDA_FILESYSTEM_ID", None)
+        if filesystem_id and filesystem_id.strip() == "":
+            filesystem_id = None  # Empty string = use instance's own filesystem
+        
+        # Launch instance with default firewall and own filesystem
         instance_data = await self.client.launch_instance(
             instance_type=instance_type,
             region=region,
-            quantity=1
+            quantity=1,
+            use_default_firewall=use_default_firewall,
+            filesystem_id=filesystem_id  # None = use instance's own filesystem
         )
         
         if not instance_data or not instance_data.get("instance_ids"):
