@@ -1,0 +1,9 @@
+# Dependencies are in parent directory
+# This file references the main requirements.txt
+# Install from parent: pip install -r ../requirements.txt
+
+# Minimal additional deps for starter interface
+pandas>=1.5.0
+plotly>=5.14.0
+streamlit>=1.25.0
+

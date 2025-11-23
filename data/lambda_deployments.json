@@ -9,7 +9,7 @@
       "region": "us-east-1",
       "status": "active",
       "launched_at": "2025-11-23T10:45:35.359767",
-      "api_endpoint": "http://129.80.191.122:8000/v1/chat/completions",
+      "api_endpoint": "http://localhost:8000/v1/chat/completions",
       "api_endpoint_local": "http://localhost:8000/v1/chat/completions",
       "cost_per_hour": 0.75,
       "vllm_running": true,
@@ -38,6 +38,15 @@
       "cost_per_hour": 0.75,
       "vllm_running": true,
       "ssh_key": "moses.pem"
+    },
+    "h100_mistral": {
+      "instance_id": "8d3d9dac2688407aa395179c75fb4203",
+      "instance_ip": "209.20.159.141",
+      "instance_type": "gpu_1x_h100_pcie",
+      "model_name": "mistralai/Mistral-7B-Instruct-v0.2",
+      "api_endpoint": "http://209.20.159.141:8000/v1/chat/completions",
+      "status": "active",
+      "region": "us-west-3"
     }
   },
   "available_models": {

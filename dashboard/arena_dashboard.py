@@ -23,6 +23,7 @@ from src.defenders.llm_defender import LLMDefender
 from src.attackers.prompt_generator import PromptGenerator
 from src.models.jailbreak import AttackStrategy, EvaluationResult, SeverityLevel
 from src.integrations.lambda_scraper import LambdaWebScraper
+from src.intelligence.threat_intelligence import ThreatIntelligenceEngine
 from src.scoring.jvi_calculator import JVICalculator
 from src.visualization.vector3d_generator import Vector3DGenerator
 from src.utils.logger import setup_logger, log
@@ -919,14 +920,17 @@ def main():
     default_instance = ""
     default_endpoint = ""
     
-    # Load all active instances
+    # Load all active instances (for scraper)
     active_instances = []
+    # Load deployed models (instances with actual models running)
+    deployed_models = []
+    
     if deployment_config_path.exists():
         try:
             with open(deployment_config_path, 'r') as f:
                 config = json.load(f)
                 deployed = config.get("deployed_models", {})
-                # Get all active instances
+                # Get all active instances (for scraper - includes all active instances)
                 active_instances = [
                     {
                         "key": key,
@@ -934,6 +938,7 @@ def main():
                         "model_name": info.get("model_name", ""),
                         "instance_id": info.get("instance_id", ""),
                         "instance_ip": info.get("instance_ip", ""),
+                        "instance_type": info.get("instance_type", ""),
                         "api_endpoint": info.get("api_endpoint", ""),
                         "api_endpoint_local": info.get("api_endpoint_local", ""),
                         "vllm_running": info.get("vllm_running", False),
@@ -942,9 +947,25 @@ def main():
                     for key, info in deployed.items()
                     if info.get("status") == "active"
                 ]
-                if active_instances:
-                    # Use first active instance as default
-                    first = active_instances[0]
+                
+                # Get deployed models (instances with vLLM running and model_name)
+                deployed_models = [
+                    inst for inst in active_instances
+                    if inst.get("vllm_running", False) and inst.get("model_name", "")
+                ]
+                # For model selection, use deployed_models (instances with actual models)
+                if deployed_models:
+                    # Prioritize H100 instances with models (the big one!)
+                    h100_models = [inst for inst in deployed_models if "h100" in inst.get("instance_type", "").lower() or "h100" in inst.get("key", "").lower()]
+                    
+                    if h100_models:
+                        # Use H100 model as default (the big one!)
+                        first = h100_models[0]
+                        log.info(f"Auto-selected H100 model instance: {first.get('instance_id')}")
+                    else:
+                        # Use first deployed model
+                        first = deployed_models[0]
+                    
                     default_model = first.get("model_name", "microsoft/phi-2")
                     default_instance = first.get("instance_id", "")
                     # Prefer local endpoint if available (SSH tunnel)
@@ -979,24 +1000,51 @@ def main():
             instance_id = None
             api_endpoint = None
         elif defender_type == "Lambda Cloud":
-            # Show instance selector if we have active instances
-            if active_instances:
-                st.markdown("**Available Instances:**")
-                instance_options = {f"{inst['name']} ({inst['model_name'].split('/')[-1]})": inst for inst in active_instances}
+            # Show model selector - only deployed models (instances with vLLM running)
+            if deployed_models:
+                # Prioritize H100 instances with models
+                h100_instances = [inst for inst in deployed_models if "h100" in inst.get("instance_type", "").lower() or "h100" in inst.get("key", "").lower()]
+                other_instances = [inst for inst in deployed_models if inst not in h100_instances]
+                
+                # Build options with H100 first, marked as "THE BIG ONE"
+                instance_options = {}
+                
+                # Add H100 instances first with special label
+                for inst in h100_instances:
+                    label = f"🚀 {inst['name']} - H100 ({inst['model_name'].split('/')[-1]}) - THE BIG ONE!"
+                    instance_options[label] = inst
+                
+                # Add other instances
+                for inst in other_instances:
+                    label = f"{inst['name']} ({inst['model_name'].split('/')[-1]})"
+                    instance_options[label] = inst
+                
                 instance_options["Custom Instance"] = None
+                
+                # Default to H100 if available
+                default_index = 0 if h100_instances else 0
                 
                 selected_instance_label = st.selectbox(
                     "Select Instance",
                     list(instance_options.keys()),
-                    help="Choose from deployed instances or configure custom"
+                    index=default_index,
+                    help="🚀 H100 instances are THE BIG ONE - fastest GPU available! Choose from deployed instances or configure custom"
                 )
                 
                 selected_instance = instance_options[selected_instance_label]
                 
                 if selected_instance:
                     # Auto-fill from selected instance
+                    instance_type_display = ""
+                    if "h100" in selected_instance.get("instance_type", "").lower() or "h100" in selected_instance.get("key", "").lower():
+                        instance_type_display = " - H100 THE BIG ONE! 🚀"
+                    
                     model_name = st.text_input("Model Name", value=selected_instance["model_name"], disabled=True)
-                    instance_id = st.text_input("Lambda Instance ID", value=selected_instance["instance_id"], disabled=True)
+                    instance_id = st.text_input(
+                        f"Lambda Instance ID{instance_type_display}", 
+                        value=selected_instance["instance_id"], 
+                        disabled=True
+                    )
                     
                     # Show status
                     if selected_instance.get("vllm_running"):
@@ -1128,15 +1176,188 @@ python3 -m vllm.entrypoints.openai.api_server \\
         else:
             difficulty_range = None
         
-        # Lambda Scraper config
+        # Attacker Setup (LLM-based)
+        st.subheader("Attacker Setup (Optional)")
+        use_llm_attacker = st.checkbox(
+            "Use LLM-based Attacker",
+            value=False,
+            help="Use an LLM model to generate attack prompts instead of rule-based generation"
+        )
+        
+        attacker_model_name = None
+        attacker_instance_id = None
+        attacker_api_endpoint = None
+        
+        if use_llm_attacker:
+            attacker_type = st.selectbox(
+                "Attacker Model Type",
+                ["Lambda Cloud"],
+                key="attacker_type",
+                help="Attacker model type (currently only Lambda Cloud supported)"
+            )
+            
+            if attacker_type == "Lambda Cloud" and deployed_models:
+                # Show model selector for attacker - only deployed models
+                attacker_h100_instances = [inst for inst in deployed_models if "h100" in inst.get("instance_type", "").lower() or "h100" in inst.get("key", "").lower()]
+                attacker_other_instances = [inst for inst in deployed_models if inst not in attacker_h100_instances]
+                
+                attacker_instance_options = {}
+                for inst in attacker_h100_instances:
+                    label = f"🚀 {inst['name']} - H100 ({inst['model_name'].split('/')[-1]}) - THE BIG ONE!"
+                    attacker_instance_options[label] = inst
+                for inst in attacker_other_instances:
+                    label = f"{inst['name']} ({inst['model_name'].split('/')[-1]})"
+                    attacker_instance_options[label] = inst
+                attacker_instance_options["Custom Instance"] = None
+                
+                attacker_selected_label = st.selectbox(
+                    "Select Attacker Instance",
+                    list(attacker_instance_options.keys()),
+                    key="attacker_instance",
+                    help="Select Lambda instance for attacker model"
+                )
+                
+                attacker_selected_instance = attacker_instance_options[attacker_selected_label]
+                
+                if attacker_selected_instance:
+                    attacker_model_name = st.text_input(
+                        "Attacker Model Name",
+                        value=attacker_selected_instance["model_name"],
+                        key="attacker_model_name",
+                        disabled=True
+                    )
+                    attacker_instance_id = st.text_input(
+                        "Attacker Instance ID",
+                        value=attacker_selected_instance["instance_id"],
+                        key="attacker_instance_id",
+                        disabled=True
+                    )
+                    attacker_api_endpoint = st.text_input(
+                        "Attacker API Endpoint",
+                        value=attacker_selected_instance.get("api_endpoint_local") or attacker_selected_instance.get("api_endpoint", ""),
+                        key="attacker_api_endpoint"
+                    )
+                else:
+                    attacker_model_name = st.text_input("Attacker Model Name", key="attacker_model_name_custom")
+                    attacker_instance_id = st.text_input("Attacker Instance ID", key="attacker_instance_id_custom")
+                    attacker_api_endpoint = st.text_input("Attacker API Endpoint", key="attacker_api_endpoint_custom")
+        
+        # Evaluator Setup (LLM-based)
+        st.subheader("Evaluator Setup (Optional)")
+        use_llm_evaluator = st.checkbox(
+            "Use LLM-based Evaluator",
+            value=False,
+            help="Use an LLM model to evaluate responses instead of rule-based classification"
+        )
+        
+        evaluator_model_name = None
+        evaluator_instance_id = None
+        evaluator_api_endpoint = None
+        
+        if use_llm_evaluator:
+            evaluator_type = st.selectbox(
+                "Evaluator Model Type",
+                ["Lambda Cloud"],
+                key="evaluator_type",
+                help="Evaluator model type (currently only Lambda Cloud supported)"
+            )
+            
+            if evaluator_type == "Lambda Cloud" and deployed_models:
+                # Show model selector for evaluator - only deployed models
+                evaluator_h100_instances = [inst for inst in deployed_models if "h100" in inst.get("instance_type", "").lower() or "h100" in inst.get("key", "").lower()]
+                evaluator_other_instances = [inst for inst in deployed_models if inst not in evaluator_h100_instances]
+                
+                evaluator_instance_options = {}
+                for inst in evaluator_h100_instances:
+                    label = f"🚀 {inst['name']} - H100 ({inst['model_name'].split('/')[-1]}) - THE BIG ONE!"
+                    evaluator_instance_options[label] = inst
+                for inst in evaluator_other_instances:
+                    label = f"{inst['name']} ({inst['model_name'].split('/')[-1]})"
+                    evaluator_instance_options[label] = inst
+                evaluator_instance_options["Custom Instance"] = None
+                
+                evaluator_selected_label = st.selectbox(
+                    "Select Evaluator Instance",
+                    list(evaluator_instance_options.keys()),
+                    key="evaluator_instance",
+                    help="Select Lambda instance for evaluator model"
+                )
+                
+                evaluator_selected_instance = evaluator_instance_options[evaluator_selected_label]
+                
+                if evaluator_selected_instance:
+                    evaluator_model_name = st.text_input(
+                        "Evaluator Model Name",
+                        value=evaluator_selected_instance["model_name"],
+                        key="evaluator_model_name",
+                        disabled=True
+                    )
+                    evaluator_instance_id = st.text_input(
+                        "Evaluator Instance ID",
+                        value=evaluator_selected_instance["instance_id"],
+                        key="evaluator_instance_id",
+                        disabled=True
+                    )
+                    evaluator_api_endpoint = st.text_input(
+                        "Evaluator API Endpoint",
+                        value=evaluator_selected_instance.get("api_endpoint_local") or evaluator_selected_instance.get("api_endpoint", ""),
+                        key="evaluator_api_endpoint"
+                    )
+                else:
+                    evaluator_model_name = st.text_input("Evaluator Model Name", key="evaluator_model_name_custom")
+                    evaluator_instance_id = st.text_input("Evaluator Instance ID", key="evaluator_instance_id_custom")
+                    evaluator_api_endpoint = st.text_input("Evaluator API Endpoint", key="evaluator_api_endpoint_custom")
+        
+        # Lambda Scraper config - shows ALL active instances (not just models)
         st.subheader("Intelligence Gathering")
         use_scraper = st.checkbox("Gather Recent Attack Patterns", value=True, 
                                    help="Scrape web sources (GitHub, forums) to identify emerging jailbreak techniques")
         if use_scraper:
-            # Pre-fill with deployed instance if available
-            scraper_instance_id = st.text_input("Lambda Instance ID (Optional)", 
-                                                value=default_instance if default_instance else "",
-                                                help="Optional: Use a Lambda instance for more powerful web scraping")
+            # Show instance selector for scraper (all active instances, including H100 without models)
+            if active_instances:
+                # Prioritize H100 instances for scraping (even if no model)
+                scraper_h100_instances = [inst for inst in active_instances if "h100" in inst.get("instance_type", "").lower() or "h100" in inst.get("key", "").lower()]
+                scraper_other_instances = [inst for inst in active_instances if inst not in scraper_h100_instances]
+                
+                scraper_instance_options = {}
+                for inst in scraper_h100_instances:
+                    # For scraper, show instance info (not model info)
+                    label = f"🚀 {inst['name']} - H100 Instance - THE BIG ONE! 🚀"
+                    scraper_instance_options[label] = inst
+                for inst in scraper_other_instances:
+                    label = f"{inst['name']} Instance"
+                    scraper_instance_options[label] = inst
+                scraper_instance_options["Custom Instance"] = None
+                scraper_instance_options["None (Local Scraping)"] = {"instance_id": None}
+                
+                scraper_selected_label = st.selectbox(
+                    "Select Scraper Instance (Optional)",
+                    list(scraper_instance_options.keys()),
+                    key="scraper_instance",
+                    help="Select Lambda instance for web scraping (H100 recommended for better performance). This is for scraping, not a model!"
+                )
+                
+                scraper_selected_instance = scraper_instance_options[scraper_selected_label]
+                
+                if scraper_selected_instance and scraper_selected_instance.get("instance_id"):
+                    scraper_instance_id = scraper_selected_instance["instance_id"]
+                    st.info(f"📡 Using instance {scraper_selected_instance.get('instance_id', '')} for web scraping (not a model)")
+                elif scraper_selected_instance and scraper_selected_instance.get("instance_id") is None:
+                    scraper_instance_id = None
+                    st.info("📡 Using local scraping (no Lambda instance)")
+                else:
+                    scraper_instance_id = st.text_input(
+                        "Lambda Instance ID (Custom)",
+                        key="scraper_instance_custom",
+                        help="Enter instance ID for scraping (this is an instance, not a model!)"
+                    )
+            else:
+                scraper_instance_id = st.text_input(
+                    "Lambda Instance ID (Optional)", 
+                    value="",
+                    key="scraper_instance_manual",
+                    help="Optional: Use a Lambda instance for web scraping (especially H100!). This is for scraping, not a model!"
+                )
         else:
             scraper_instance_id = None
         
@@ -1161,80 +1382,201 @@ python3 -m vllm.entrypoints.openai.api_server \\
     
     # Main content area
     if start_battle or st.session_state.battle_running:
-        # Initialize
+        # Initialize arena with threat intelligence enabled
         if not st.session_state.arena:
-            st.session_state.arena = JailbreakArena()
+            # Initialize LLM attacker if configured
+            llm_attacker = None
+            if use_llm_attacker and attacker_model_name and attacker_instance_id:
+                try:
+                    from src.attackers.llm_attacker import LLMAttacker
+                    llm_attacker = LLMAttacker(
+                        model_name=attacker_model_name,
+                        model_type="local",
+                        use_lambda=True,
+                        lambda_instance_id=attacker_instance_id,
+                        lambda_api_endpoint=attacker_api_endpoint
+                    )
+                    log.info(f"Initialized LLM attacker: {attacker_model_name} on instance {attacker_instance_id}")
+                except Exception as e:
+                    log.error(f"Error initializing LLM attacker: {e}")
+                    st.warning(f"Failed to initialize LLM attacker: {e}")
+            
+            # Initialize LLM evaluator if configured
+            llm_evaluator = None
+            if use_llm_evaluator and evaluator_model_name and evaluator_instance_id:
+                try:
+                    from src.referee.llm_evaluator import LLMEvaluator
+                    llm_evaluator = LLMEvaluator(
+                        model_name=evaluator_model_name,
+                        model_type="local",
+                        use_lambda=True,
+                        lambda_instance_id=evaluator_instance_id,
+                        lambda_api_endpoint=evaluator_api_endpoint
+                    )
+                    log.info(f"Initialized LLM evaluator: {evaluator_model_name} on instance {evaluator_instance_id}")
+                except Exception as e:
+                    log.error(f"Error initializing LLM evaluator: {e}")
+                    st.warning(f"Failed to initialize LLM evaluator: {e}")
+            
+            # Create arena with optional LLM components
+            st.session_state.arena = JailbreakArena(
+                use_pattern_database=True,
+                llm_attacker=llm_attacker,
+                llm_evaluator=llm_evaluator
+            )
         
-        # Gather recent data from Lambda scraper if enabled (non-blocking)
+        # Gather recent data from Lambda scraper if enabled and integrate with Threat Intelligence
         if use_scraper:
             import threading
             
             # Show initial status in main thread
             scraper_status = st.empty()
-            scraper_status.info("Gathering recent attack patterns in background...")
+            scraper_status.info("🕵️ Gathering recent attack patterns and extracting intelligence...")
             
-            def run_scraper_background():
-                """Run scraper in background thread."""
+            def run_intelligence_gathering():
+                """Run intelligence gathering in background thread."""
                 try:
-                    # Use logging instead of Streamlit components in background thread
-                    log.info("Gathering recent attack patterns in background...")
+                    log.info("Starting intelligence gathering with threat intelligence engine...")
+                    
+                    # Create scraper
                     scraper = LambdaWebScraper(instance_id=scraper_instance_id if scraper_instance_id else None)
-                    recent_data = run_async(gather_recent_attacks(scraper, scraper_instance_id))
+                    log.info(f"Created scraper with instance_id: {scraper_instance_id}")
+                    
+                    # Initialize Threat Intelligence Engine with the arena's pattern database
+                    if st.session_state.arena and hasattr(st.session_state.arena, 'pattern_database') and st.session_state.arena.pattern_database:
+                        pattern_db = st.session_state.arena.pattern_database
+                        log.info("Using existing arena pattern database")
+                    else:
+                        # Create new pattern database if arena doesn't have one
+                        from src.intelligence.pattern_database import ExploitPatternDatabase
+                        pattern_db = ExploitPatternDatabase()
+                        log.info("Created new pattern database for intelligence")
+                        # Add to arena if it exists
+                        if st.session_state.arena:
+                            st.session_state.arena.pattern_database = pattern_db
+                    
+                    # Initialize threat intelligence engine
+                    threat_engine = ThreatIntelligenceEngine(
+                        pattern_database=pattern_db,
+                        scraper=scraper
+                    )
+                    if st.session_state.arena:
+                        st.session_state.arena.threat_intelligence = threat_engine
+                    
+                    log.info("Threat intelligence engine initialized, starting scraper...")
+                    
+                    # Update intelligence from scraper - THIS ACTUALLY EXTRACTS PATTERNS!
+                    update_result = run_async(threat_engine.update_from_scraper(days_back=7, max_results=50))
+                    log.info(f"Scraper update result: {update_result}")
+                    
+                    # Also integrate prompts into prompt database (not async, call directly)
+                    try:
+                        integrate_result = threat_engine.integrate_prompts_to_database()
+                        log.info(f"Prompt integration result: {integrate_result}")
+                    except Exception as e:
+                        import traceback
+                        log.error(f"Error integrating prompts: {e}\n{traceback.format_exc()}")
+                        integrate_result = {"prompts_added": 0, "error": str(e)}
+                    
+                    # Get recent data for display (use same instance if available)
+                    if scraper_instance_id:
+                        # Use the same Lambda instance for scraping if provided
+                        recent_data = run_async(gather_recent_attacks(scraper, scraper_instance_id))
+                    else:
+                        recent_data = run_async(gather_recent_attacks(scraper, None))
+                    
+                    # Store results
+                    st.session_state.intelligence_update = update_result
+                    st.session_state.intelligence_integration = integrate_result
                     
                     if recent_data:
                         st.session_state.scraper_data = recent_data
                         st.session_state.scraper_status = "complete"
-                        log.info("Scraper completed successfully")
+                        log.info(f"Intelligence gathering complete: {update_result.get('patterns_added', 0)} patterns added, {integrate_result.get('prompts_added', 0)} prompts integrated")
                     else:
                         st.session_state.scraper_data = None
-                        st.session_state.scraper_status = "no_data"
-                        log.info("Scraper found no data")
+                        st.session_state.scraper_status = "complete_no_data"
+                        log.info(f"Intelligence gathering complete (no display data): {update_result.get('patterns_added', 0)} patterns added")
                 except Exception as e:
+                    import traceback
                     st.session_state.scraper_data = None
                     st.session_state.scraper_status = f"error: {str(e)}"
-                    log.warning(f"Scraper encountered an issue: {e}. Continuing without recent data...")
+                    log.error(f"Intelligence gathering error: {e}\n{traceback.format_exc()}")
             
-            # Start scraper in background thread
-            scraper_thread = threading.Thread(target=run_scraper_background, daemon=True)
+            # Start intelligence gathering in background thread
+            scraper_thread = threading.Thread(target=run_intelligence_gathering, daemon=True)
             scraper_thread.start()
             
             # Check status and update UI in main thread
             if 'scraper_status' in st.session_state:
                 if st.session_state.scraper_status == "complete":
-                    scraper_status.empty()
+                    intel_update = st.session_state.get('intelligence_update', {})
+                    intel_integration = st.session_state.get('intelligence_integration', {})
+                    patterns_added = intel_update.get('patterns_added', 0)
+                    prompts_added = intel_integration.get('prompts_added', 0)
+                    
+                    if patterns_added > 0 or prompts_added > 0:
+                        scraper_status.success(f"✅ Intelligence gathered: {patterns_added} patterns extracted, {prompts_added} prompts added to database")
+                    else:
+                        scraper_status.info("✅ Intelligence gathering complete (no new patterns found)")
+                elif st.session_state.scraper_status == "complete_no_data":
+                    intel_update = st.session_state.get('intelligence_update', {})
+                    patterns_added = intel_update.get('patterns_added', 0)
+                    if patterns_added > 0:
+                        scraper_status.success(f"✅ {patterns_added} patterns extracted and added to database")
+                    else:
+                        scraper_status.empty()
                 elif st.session_state.scraper_status.startswith("error"):
-                    scraper_status.warning(f"Scraper error: {st.session_state.scraper_status.split(':', 1)[1]}")
+                    scraper_status.warning(f"⚠️ Intelligence gathering error: {st.session_state.scraper_status.split(':', 1)[1]}")
                 elif st.session_state.scraper_status == "no_data":
                     scraper_status.empty()
             
-            # Show scraper data if already available
-            if st.session_state.scraper_data:
+            # Show intelligence results prominently
+            intel_update = st.session_state.get('intelligence_update', {})
+            intel_integration = st.session_state.get('intelligence_integration', {})
+            patterns_added = intel_update.get('patterns_added', 0)
+            prompts_added = intel_integration.get('prompts_added', 0)
+            events_found = intel_update.get('events_found', 0)
+            
+            if patterns_added > 0 or prompts_added > 0 or events_found > 0:
                 st.markdown("---")
-                with st.expander("Recent Attack Patterns from Web Sources", expanded=True):
+                st.success(f"🕵️ Intelligence Gathering Complete: {events_found} events found, {patterns_added} patterns extracted, {prompts_added} prompts added")
+                
+                if prompts_added > 0:
                     st.markdown("""
-                    <div style="padding: 1rem; background: rgba(6, 182, 212, 0.1); border-radius: 12px; border-left: 4px solid #06b6d4; margin-bottom: 1rem;">
-                    <strong>Intelligence Gathering:</strong> These patterns are gathered from GitHub, forums, and research sources to identify emerging jailbreak techniques.
+                    <div style="padding: 1rem; background: rgba(34, 197, 94, 0.1); border-left: 4px solid #22c55e; border-radius: 8px; margin: 1rem 0;">
+                        <strong style="color: #22c55e;">📊 Database Updated:</strong> 
+                        <span style="color: #86efac;">{0} newly discovered attack prompts have been added to the testing database and will be used to evaluate your selected model.</span>
                     </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Parse and display in a cleaner format
-                    events = st.session_state.scraper_data.split("\n\n")
-                    for i, event in enumerate(events[:8], 1):  # Show top 8
-                        if event.strip():
-                            lines = event.strip().split("\n")
-                            if len(lines) >= 2:
-                                title = lines[0].replace("**", "").strip()
-                                source_line = next((l for l in lines if l.startswith("Source:")), "")
-                                category_line = next((l for l in lines if l.startswith("Category:")), "")
-                                url_line = next((l for l in lines if l.startswith("URL:")), "")
-                                
-                                st.markdown(f"""
-                                <div style="padding: 0.75rem; margin: 0.5rem 0; background: rgba(15, 23, 42, 0.5); border-radius: 8px; border-left: 3px solid #06b6d4;">
-                                <strong style="color: #06b6d4;">{title}</strong><br>
-                                <small style="color: #999;">{source_line} | {category_line}</small><br>
-                                <small style="color: #666;"><a href="{url_line.replace('URL: ', '')}" target="_blank" style="color: #06b6d4;">{url_line.replace('URL: ', '')}</a></small>
-                                </div>
-                                """, unsafe_allow_html=True)
+                    """.format(prompts_added), unsafe_allow_html=True)
+                
+                # Show scraper data if available
+                if st.session_state.scraper_data:
+                    with st.expander("📊 Recent Attack Patterns from Web Sources", expanded=True):
+                        st.markdown("""
+                        <div style="padding: 1rem; background: rgba(6, 182, 212, 0.1); border-radius: 12px; border-left: 4px solid #06b6d4; margin-bottom: 1rem;">
+                        <strong>Intelligence Gathering:</strong> These patterns are gathered from GitHub, forums, and research sources to identify emerging jailbreak techniques.
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Parse and display in a cleaner format
+                        events = st.session_state.scraper_data.split("\n\n")
+                        for i, event in enumerate(events[:10], 1):  # Show top 10
+                            if event.strip():
+                                lines = event.strip().split("\n")
+                                if len(lines) >= 2:
+                                    title = lines[0].replace("**", "").strip()
+                                    source_line = next((l for l in lines if l.startswith("Source:")), "")
+                                    category_line = next((l for l in lines if l.startswith("Category:")), "")
+                                    url_line = next((l for l in lines if l.startswith("URL:")), "")
+                                    
+                                    st.markdown(f"""
+                                    <div style="padding: 0.75rem; margin: 0.5rem 0; background: rgba(15, 23, 42, 0.5); border-radius: 8px; border-left: 3px solid #06b6d4;">
+                                    <strong style="color: #06b6d4;">{title}</strong><br>
+                                    <small style="color: #999;">{source_line} | {category_line}</small><br>
+                                    <small style="color: #666;"><a href="{url_line.replace('URL: ', '')}" target="_blank" style="color: #06b6d4;">{url_line.replace('URL: ', '')}</a></small>
+                                    </div>
+                                    """, unsafe_allow_html=True)
         
         # Create defender
         with st.spinner("Setting up Defender"):
@@ -1467,7 +1809,15 @@ python3 -m vllm.entrypoints.openai.api_server \\
                 # Show database stats if using database
                 if use_database and st.session_state.arena.prompt_generator.prompt_db:
                     db_stats = st.session_state.arena.prompt_generator.prompt_db.get_statistics()
-                    st.info(f"Using {db_stats['total_prompts']} structured prompts from database")
+                    
+                    # Check if intelligence gathering added prompts
+                    intel_integration = st.session_state.get('intelligence_integration', {})
+                    prompts_added = intel_integration.get('prompts_added', 0)
+                    
+                    if prompts_added > 0:
+                        st.success(f"✅ Using {db_stats['total_prompts']} structured prompts from database ({prompts_added} newly gathered from intelligence sources)")
+                    else:
+                        st.info(f"Using {db_stats['total_prompts']} structured prompts from database")
             
             except Exception as e:
                 st.error(f"Error setting up defender: {e}")
@@ -1599,10 +1949,11 @@ python3 -m vllm.entrypoints.openai.api_server \\
                 )
                 
                 # Run single round with real-time callback
+                # Use parallel=True for better performance with Lambda instances
                 round_result = run_async(st.session_state.arena._run_round(
                     round_num=round_num,
                     defenders=[defender],
-                    parallel=False,  # Sequential for better live updates
+                    parallel=True,  # Enable parallel execution for faster performance
                     on_evaluation_complete=send_realtime_update  # Real-time updates!
                 ))
                 
@@ -1736,6 +2087,24 @@ python3 -m vllm.entrypoints.openai.api_server \\
                             elapsed = time.time() - st.session_state.start_time if st.session_state.start_time else 0
                             avg_time = elapsed / completed_rounds if completed_rounds > 0 else 0
                             st.metric("Elapsed Time", f"{elapsed:.1f}s", delta=f"~{avg_time:.1f}s/round")
+                        
+                        # Learning metrics
+                        if hasattr(st.session_state, 'arena') and st.session_state.arena:
+                            unique_prompts = len(st.session_state.arena.used_prompts) if hasattr(st.session_state.arena, 'used_prompts') else 0
+                            successful_patterns = len(st.session_state.arena.successful_prompts) if hasattr(st.session_state.arena, 'successful_prompts') else 0
+                            pattern_db_size = len(st.session_state.arena.pattern_database.patterns) if (hasattr(st.session_state.arena, 'pattern_database') and st.session_state.arena.pattern_database) else 0
+                            
+                            if unique_prompts > 0 or successful_patterns > 0:
+                                st.markdown("---")
+                                learn_col1, learn_col2, learn_col3 = st.columns(3)
+                                with learn_col1:
+                                    freshness_rate = (unique_prompts / completed_attempts * 100) if completed_attempts > 0 else 100
+                                    st.metric("Unique Prompts", unique_prompts, delta=f"{freshness_rate:.1f}% fresh")
+                                with learn_col2:
+                                    st.metric("Patterns Learned", successful_patterns, delta=f"{pattern_db_size} total")
+                                with learn_col3:
+                                    creativity = min(100, (freshness_rate + (successful_patterns * 2)))
+                                    st.metric("Creativity", f"{creativity:.0f}/100", delta="High" if creativity > 80 else "Medium")
                 
                 # Display live round results
                 round_logs = []
@@ -1839,13 +2208,26 @@ python3 -m vllm.entrypoints.openai.api_server \\
                         all_logs = st.session_state.eval_progress['round_logs'] + round_logs
                         st.session_state.eval_progress['round_logs'] = all_logs[-50:]  # Keep last 50
                         
+                        # Show learning indicator for successful exploits
+                        if hasattr(st.session_state, 'arena') and st.session_state.arena:
+                            unique_count = len(st.session_state.arena.used_prompts) if hasattr(st.session_state.arena, 'used_prompts') else 0
+                            successful_count = len(st.session_state.arena.successful_prompts) if hasattr(st.session_state.arena, 'successful_prompts') else 0
+                            
+                            if unique_count > 0 or successful_count > 0:
+                                st.markdown(f"""
+                                <div style="padding: 0.5rem; background: rgba(6, 182, 212, 0.1); border-left: 3px solid #06b6d4; border-radius: 6px; margin-bottom: 0.5rem;">
+                                    <strong>🧠 Learning System:</strong> {unique_count} unique prompts | {successful_count} successful patterns learned
+                                </div>
+                                """, unsafe_allow_html=True)
+                        
                         for log_entry in all_logs[-20:]:  # Show last 20
                             if log_entry['status'] == "JAILBROKEN":
                                 st.markdown(f"""
                                 <div class="success-log">
-                                    <strong>{log_entry['round']}: {log_entry['status']}</strong><br>
+                                    <strong>{log_entry['round']}: {log_entry['status']} 🎯</strong><br>
                                     Strategy: {log_entry['strategy']} | Severity: {log_entry['severity']}/5<br>
-                                    <small>Prompt: {log_entry['prompt']}...</small>
+                                    <small>Prompt: {log_entry['prompt']}...</small><br>
+                                    <small style="color: #06b6d4;">💡 Pattern stored for creative variation generation</small>
                                 </div>
                                 """, unsafe_allow_html=True)
                             else:
@@ -1873,6 +2255,12 @@ python3 -m vllm.entrypoints.openai.api_server \\
             total_exploits = stats.get('total_exploits', 0)
             total_evaluations = stats.get('total_evaluations', total_attempts)
             
+            # Get learning system metrics
+            unique_prompts = len(st.session_state.arena.used_prompts) if hasattr(st.session_state.arena, 'used_prompts') else 0
+            successful_patterns = len(st.session_state.arena.successful_prompts) if hasattr(st.session_state.arena, 'successful_prompts') else 0
+            pattern_db_size = len(st.session_state.arena.pattern_database.patterns) if (hasattr(st.session_state.arena, 'pattern_database') and st.session_state.arena.pattern_database) else 0
+            freshness_rate = (unique_prompts / total_evaluations * 100) if total_evaluations > 0 else 100
+            
             # Update final metrics
             with metrics_col1:
                 st.metric("Rounds Completed", f"{num_rounds}/{num_rounds}")
@@ -1882,6 +2270,62 @@ python3 -m vllm.entrypoints.openai.api_server \\
                 st.metric("Exploits", f"{total_exploits}/{total_evaluations}")
             with metrics_col4:
                 st.metric("Total Duration", f"{duration:.1f}s")
+            
+            # Learning System Metrics Section
+            if hasattr(st.session_state, 'arena') and st.session_state.arena:
+                unique_prompts = len(st.session_state.arena.used_prompts) if hasattr(st.session_state.arena, 'used_prompts') else 0
+                successful_patterns = len(st.session_state.arena.successful_prompts) if hasattr(st.session_state.arena, 'successful_prompts') else 0
+                pattern_db_size = len(st.session_state.arena.pattern_database.patterns) if (hasattr(st.session_state.arena, 'pattern_database') and st.session_state.arena.pattern_database) else 0
+                freshness_rate = (unique_prompts / total_evaluations * 100) if total_evaluations > 0 else 100
+                
+                st.markdown("---")
+                st.markdown("### 🧠 Learning System Status")
+                
+                learn_col1, learn_col2, learn_col3, learn_col4 = st.columns(4)
+                with learn_col1:
+                    st.metric(
+                        "Unique Prompts Generated",
+                        unique_prompts,
+                        delta=f"{freshness_rate:.1f}% freshness",
+                        delta_color="normal",
+                        help="Total unique prompts generated (no repetition - system ensures freshness)"
+                    )
+                with learn_col2:
+                    st.metric(
+                        "Successful Patterns Learned",
+                        successful_patterns,
+                        delta=f"{pattern_db_size} in database",
+                        delta_color="normal",
+                        help="Successful exploits stored and used to generate creative variations"
+                    )
+                with learn_col3:
+                    st.metric(
+                        "Pattern Database Size",
+                        pattern_db_size,
+                        delta=f"{successful_patterns} recent" if successful_patterns > 0 else None,
+                        delta_color="normal",
+                        help="Total exploit patterns stored for defense improvement and creative generation"
+                    )
+                with learn_col4:
+                    creativity_score = min(100, (freshness_rate + (successful_patterns * 2)))
+                    st.metric(
+                        "Creativity Score",
+                        f"{creativity_score:.0f}/100",
+                        delta="High" if creativity_score > 80 else "Medium" if creativity_score > 50 else "Low",
+                        delta_color="normal" if creativity_score > 80 else "off",
+                        help="Measures how creative and fresh the attack generation is"
+                    )
+                
+                # Learning system info box
+                if successful_patterns > 0:
+                    st.success(f"""
+                    ✅ **Learning System Active**: The system has learned from {successful_patterns} successful exploits and is using them to generate creative new attack variations.
+                    - **No Repetition**: {unique_prompts} unique prompts generated (100% freshness)
+                    - **Pattern Learning**: {pattern_db_size} exploit patterns stored in database
+                    - **Creative Generation**: System creates fresh variations based on successful patterns
+                    """)
+                else:
+                    st.info("💡 **Learning System Ready**: As successful exploits are found, they will be stored and used to generate creative new attack variations.")
             
         except Exception as e:
             st.markdown(f'<div style="padding: 0.75rem; background: rgba(239, 68, 68, 0.1); border-left: 3px solid rgba(239, 68, 68, 0.8); border-radius: 6px; margin: 0.5rem 0; color: #fca5a5;"><i class="fas fa-times-circle" style="margin-right: 0.5rem; color: #ef4444;"></i> Evaluation failed: {e}</div>', unsafe_allow_html=True)

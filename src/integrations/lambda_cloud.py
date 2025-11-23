@@ -369,8 +369,8 @@ class LambdaDefender:
         api_endpoint: Optional[str] = None,
         max_retries: int = 3,
         retry_delay: float = 1.0,
-        enable_cache: bool = False,
-        health_check_interval: int = 60
+        enable_cache: bool = True,  # Enable caching by default for performance
+        health_check_interval: int = 120  # Increase interval to reduce overhead
     ):
         """
         Initialize Lambda-based defender.
@@ -404,24 +404,55 @@ class LambdaDefender:
         self._last_health_check = 0.0
         self._is_healthy = True
         
+        # HTTP client connection pool for performance (reused across requests)
+        self._http_client: Optional[httpx.AsyncClient] = None
+        self._client_lock = asyncio.Lock()
+        
         log.info(f"Initialized Lambda defender on instance {instance_id}")
         if api_endpoint:
             log.info(f"Using API endpoint: {api_endpoint}")
     
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        """Get or create HTTP client with connection pooling."""
+        if self._http_client is None:
+            async with self._client_lock:
+                if self._http_client is None:
+                    # Create client with connection pooling and optimized timeouts
+                    limits = httpx.Limits(max_keepalive_connections=10, max_connections=20)
+                    self._http_client = httpx.AsyncClient(
+                        timeout=httpx.Timeout(30.0, connect=10.0),  # Reduced from 120s
+                        limits=limits,
+                        http2=True  # Enable HTTP/2 for better performance
+                    )
+        return self._http_client
+    
+    async def close(self):
+        """Close HTTP client connection pool."""
+        if self._http_client:
+            await self._http_client.aclose()
+            self._http_client = None
+    
     async def _check_health(self) -> bool:
-        """Check if API endpoint is healthy."""
+        """Check if API endpoint is healthy (cached to reduce overhead)."""
         if not self.api_endpoint:
             return False
         
         import time
         current_time = time.time()
         
-        # Skip if checked recently
+        # Skip if checked recently (cached result)
         if current_time - self._last_health_check < self.health_check_interval:
             return self._is_healthy
         
+        # Only check health if we haven't checked recently or if last check failed
+        # Skip health check if we're healthy and checked recently
+        if self._is_healthy and (current_time - self._last_health_check) < (self.health_check_interval * 2):
+            return True
+        
         try:
-            import httpx
+            # Use shared HTTP client for health checks
+            client = await self._get_http_client()
+            
             # Normalize endpoint URL
             endpoint = self.api_endpoint.rstrip('/')
             if not endpoint.startswith('http'):
@@ -432,11 +463,10 @@ class LambdaDefender:
             if '/health' not in health_url:
                 health_url = f"{endpoint}/ping" if '/v1/' in endpoint else f"{endpoint}/health"
             
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(health_url)
-                self._is_healthy = response.status_code < 500
-                self._last_health_check = current_time
-                return self._is_healthy
+            response = await client.get(health_url, timeout=3.0)  # Reduced timeout
+            self._is_healthy = response.status_code < 500
+            self._last_health_check = current_time
+            return self._is_healthy
         except Exception as e:
             log.debug(f"Health check failed: {e}")
             self._is_healthy = False
@@ -508,14 +538,12 @@ class LambdaDefender:
                     # Remove expired cache entry
                     del self._cache[cache_key]
         
-        # Check health before making request
-        if not await self._check_health():
-            log.warning("API endpoint health check failed, attempting request anyway")
+        # Skip health check on every request (only check periodically)
+        # Health check is now cached and only runs every health_check_interval seconds
         
         # If API endpoint is configured, use HTTP API
         if self.api_endpoint:
             try:
-                import httpx
                 # Normalize endpoint URL (remove trailing slash, ensure proper format)
                 endpoint = self.api_endpoint.rstrip('/')
                 if not endpoint.startswith('http'):
@@ -553,88 +581,92 @@ class LambdaDefender:
                         "temperature": kwargs.get("temperature", 0.7)
                     }
                 
-                async with httpx.AsyncClient(timeout=120.0) as client:
-                    try:
-                        response = await self._make_request_with_retry(client, api_url, payload)
+                # Use shared HTTP client with connection pooling
+                client = await self._get_http_client()
+                try:
+                    response = await self._make_request_with_retry(client, api_url, payload)
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    # Handle both completions and chat/completions response formats
+                    if "choices" in data and len(data["choices"]) > 0:
+                        choice = data["choices"][0]
+                        
+                        # Chat completions format: choice.message.content
+                        if "message" in choice and "content" in choice["message"]:
+                            content = choice["message"]["content"]
+                        # Completions format: choice.text
+                        elif "text" in choice:
+                            content = choice["text"]
+                        else:
+                            log.error(f"Unexpected choice format: {choice}")
+                            raise ValueError(f"Unexpected choice format in API response")
+                        
+                        log.debug(f"API response received: {len(content)} chars")
+                        
+                        # Cache response if enabled
+                        if self.enable_cache:
+                            self._cache[cache_key] = (content, time.time())
+                            # Limit cache size (keep last 100 entries)
+                            if len(self._cache) > 100:
+                                oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k][1])
+                                del self._cache[oldest_key]
+                        
+                        self._is_healthy = True  # Mark as healthy after successful request
+                        return content
+                    else:
+                        log.error(f"Unexpected API response format: {data}")
+                        error_msg = f"Error: Unexpected API response format"
+                        if "error" in data:
+                            error_msg += f" - {data.get('error', {}).get('message', 'Unknown error')}"
+                        raise ValueError(error_msg)
+                        
+                except httpx.HTTPStatusError as e:
+                    # If using completions endpoint and got 405/404, try chat/completions as fallback
+                    if not use_chat_format and e.response.status_code in [404, 405]:
+                        log.info(f"Completions endpoint returned {e.response.status_code}, trying chat/completions format...")
+                        
+                        # Try chat/completions format as fallback
+                        chat_url = endpoint.replace("/v1/completions", "/v1/chat/completions")
+                        if chat_url == endpoint:  # endpoint didn't contain /v1/completions
+                            chat_url = f"{endpoint}/v1/chat/completions"
+                        
+                        chat_payload = {
+                            "model": self.model_name,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "max_tokens": kwargs.get("max_tokens", 1000),
+                            "temperature": kwargs.get("temperature", 0.7)
+                        }
+                        
+                        response = await self._make_request_with_retry(client, chat_url, chat_payload)
                         response.raise_for_status()
                         data = response.json()
                         
-                        # Handle both completions and chat/completions response formats
                         if "choices" in data and len(data["choices"]) > 0:
                             choice = data["choices"][0]
-                            
-                            # Chat completions format: choice.message.content
-                            if "message" in choice and "content" in choice["message"]:
+                            if "message" in choice:
                                 content = choice["message"]["content"]
-                            # Completions format: choice.text
                             elif "text" in choice:
                                 content = choice["text"]
                             else:
-                                log.error(f"Unexpected choice format: {choice}")
-                                raise ValueError(f"Unexpected choice format in API response")
+                                raise ValueError(f"Unexpected choice format: {choice}")
                             
-                            log.debug(f"API response received: {len(content)} chars")
+                            log.debug(f"API response received via chat/completions: {len(content)} chars")
                             
-                            # Cache response if enabled
                             if self.enable_cache:
                                 self._cache[cache_key] = (content, time.time())
-                                # Limit cache size (keep last 100 entries)
-                                if len(self._cache) > 100:
-                                    oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k][1])
-                                    del self._cache[oldest_key]
                             
-                            self._is_healthy = True  # Mark as healthy after successful request
+                            self._is_healthy = True
                             return content
                         else:
-                            log.error(f"Unexpected API response format: {data}")
-                            error_msg = f"Error: Unexpected API response format"
-                            if "error" in data:
-                                error_msg += f" - {data.get('error', {}).get('message', 'Unknown error')}"
-                            raise ValueError(error_msg)
-                            
-                    except httpx.HTTPStatusError as e:
-                        # If using completions endpoint and got 405/404, try chat/completions as fallback
-                        if not use_chat_format and e.response.status_code in [404, 405]:
-                            log.info(f"Completions endpoint returned {e.response.status_code}, trying chat/completions format...")
-                            
-                            # Try chat/completions format as fallback
-                            chat_url = endpoint.replace("/v1/completions", "/v1/chat/completions")
-                            if chat_url == endpoint:  # endpoint didn't contain /v1/completions
-                                chat_url = f"{endpoint}/v1/chat/completions"
-                            
-                            chat_payload = {
-                                "model": self.model_name,
-                                "messages": [{"role": "user", "content": prompt}],
-                                "max_tokens": kwargs.get("max_tokens", 1000),
-                                "temperature": kwargs.get("temperature", 0.7)
-                            }
-                            
-                            response = await self._make_request_with_retry(client, chat_url, chat_payload)
-                            response.raise_for_status()
-                            data = response.json()
-                            
-                            if "choices" in data and len(data["choices"]) > 0:
-                                choice = data["choices"][0]
-                                if "message" in choice:
-                                    content = choice["message"]["content"]
-                                elif "text" in choice:
-                                    content = choice["text"]
-                                else:
-                                    raise ValueError(f"Unexpected choice format: {choice}")
-                                
-                                log.debug(f"API response received via chat/completions: {len(content)} chars")
-                                
-                                if self.enable_cache:
-                                    self._cache[cache_key] = (content, time.time())
-                                
-                                self._is_healthy = True
-                                return content
-                            else:
-                                raise ValueError(f"Unexpected API response format: {data}")
-                        else:
-                            # Re-raise if not a format issue
-                            raise
+                            raise ValueError(f"Unexpected API response format: {data}")
+                    else:
+                        # Re-raise if not a format issue
+                        raise
                         
+                except Exception as e:
+                    log.error(f"Error in API request: {e}")
+                    raise
             except httpx.HTTPStatusError as e:
                 log.error(f"HTTP error calling Lambda API: {e.response.status_code} - {e.response.text}")
                 error_msg = f"Error: HTTP {e.response.status_code}"

@@ -24,7 +24,17 @@ class ScrapedEvent:
 
 
 class LambdaWebScraper:
-    """Web scraper that runs on Lambda Cloud instances to gather recent events."""
+    """
+    Web scraper that uses Lambda Cloud instances for enhanced scraping and analysis.
+    
+    When instance_id is provided:
+    - Runs parallel scraping locally (fast)
+    - Uses Lambda instance API (if available) to enhance relevance scoring
+    - Leverages cloud resources for better analysis
+    
+    Without instance_id:
+    - Runs parallel local scraping (still fast)
+    """
     
     def __init__(
         self,
@@ -36,11 +46,13 @@ class LambdaWebScraper:
         
         Args:
             lambda_client: Lambda Cloud client
-            instance_id: Optional specific instance ID to use
+            instance_id: Optional specific instance ID to use for enhanced analysis
         """
         self.lambda_client = lambda_client or LambdaCloudClient()
         self.instance_id = instance_id
         self.scraped_events: List[ScrapedEvent] = []
+        if instance_id:
+            log.info(f"LambdaWebScraper initialized with instance {instance_id} for enhanced scraping")
         
         # Search sources and queries
         self.search_queries = [
@@ -100,26 +112,112 @@ class LambdaWebScraper:
         days_back: int,
         max_results: int
     ) -> List[ScrapedEvent]:
-        """Scrape using Lambda instance (more powerful, can handle complex tasks)."""
-        log.info(f"Using Lambda instance {self.instance_id} for scraping")
+        """Scrape using Lambda instance - runs scraping in parallel and uses API for enhanced analysis."""
+        log.info(f"Using Lambda instance {self.instance_id} for enhanced scraping")
         
         # Get instance details
         instance = await self.lambda_client.get_instance_status(self.instance_id)
         if not instance:
-            log.error(f"Instance {self.instance_id} not found")
+            log.error(f"Instance {self.instance_id} not found, using local scraping")
             return await self._scrape_local(days_back, max_results)
         
         instance_ip = instance.get("ip")
         if not instance_ip:
-            log.warning("Instance IP not available, falling back to local scraping")
+            log.warning("Instance IP not available, using local scraping")
             return await self._scrape_local(days_back, max_results)
         
-        # Use the Lambda instance's model to generate search queries and analyze results
-        # This is a placeholder - in practice, you'd SSH into the instance and run scraping scripts
-        log.info("Lambda instance scraping would be implemented via SSH/API")
-        log.info("For now, using local scraping fallback")
+        # Run scraping tasks in parallel (fast)
+        log.info(f"Running parallel scraping, will use Lambda API at {instance_ip} for analysis")
         
-        return await self._scrape_local(days_back, max_results)
+        # Use async parallel scraping
+        tasks = [
+            self._search_github(days_back),
+            self._search_reddit(days_back),
+            self._search_stackexchange(days_back),
+        ]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        events = []
+        for result in results:
+            if isinstance(result, list):
+                events.extend(result)
+            elif isinstance(result, Exception):
+                log.debug(f"Scraping task error: {result}")
+        
+        # Try to use Lambda instance API for enhanced analysis if available
+        api_endpoint = f"http://{instance_ip}:8000/v1/chat/completions"
+        enhanced_events = await self._enhance_with_lambda_api(events, api_endpoint, max_results)
+        
+        # Sort by relevance and limit
+        enhanced_events.sort(key=lambda x: (x.relevance_score, x.timestamp), reverse=True)
+        
+        log.info(f"Scraped {len(enhanced_events)} events using Lambda instance")
+        return enhanced_events[:max_results]
+    
+    async def _enhance_with_lambda_api(
+        self,
+        events: List[ScrapedEvent],
+        api_endpoint: str,
+        max_results: int
+    ) -> List[ScrapedEvent]:
+        """Use Lambda instance API to enhance event analysis and relevance scoring."""
+        if not events:
+            return events
+        
+        # Try to use Lambda API to analyze and score events
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Test if API is available
+                health_url = api_endpoint.replace("/v1/chat/completions", "/health")
+                try:
+                    health_response = await client.get(health_url, timeout=5.0)
+                    if health_response.status_code != 200:
+                        log.debug("Lambda API health check failed, skipping enhancement")
+                        return events
+                except:
+                    log.debug("Lambda API not available, using events as-is")
+                    return events
+                
+                # Use API to analyze top events for better relevance scoring
+                for event in events[:min(10, len(events))]:  # Analyze top 10
+                    try:
+                        analysis_prompt = f"""Analyze this content for jailbreak/prompt injection relevance (0-1 score):
+Title: {event.title[:200]}
+Content: {event.content[:500]}
+
+Respond with ONLY a number between 0 and 1 representing relevance score."""
+                        
+                        payload = {
+                            "model": "gpt-3.5-turbo",  # Placeholder, vLLM will use loaded model
+                            "messages": [{"role": "user", "content": analysis_prompt}],
+                            "max_tokens": 10,
+                            "temperature": 0.1
+                        }
+                        
+                        response = await client.post(api_endpoint, json=payload, timeout=10.0)
+                        if response.status_code == 200:
+                            data = response.json()
+                            if "choices" in data and len(data["choices"]) > 0:
+                                score_text = data["choices"][0].get("message", {}).get("content", "").strip()
+                                try:
+                                    new_score = float(score_text)
+                                    # Update relevance score (weighted average)
+                                    event.relevance_score = (event.relevance_score * 0.5) + (new_score * 0.5)
+                                except:
+                                    pass
+                    except Exception as e:
+                        log.debug(f"Error enhancing event with Lambda API: {e}")
+                        continue
+                    
+                    # Rate limiting
+                    await asyncio.sleep(0.5)
+                
+                log.info(f"Enhanced {min(10, len(events))} events using Lambda API")
+        except Exception as e:
+            log.debug(f"Lambda API enhancement failed: {e}, using events as-is")
+        
+        return events
     
     async def _scrape_local(
         self,
@@ -127,50 +225,30 @@ class LambdaWebScraper:
         max_results: int
     ) -> List[ScrapedEvent]:
         """
-        Local scraping fallback (limited capabilities).
-        Uses public APIs and simple web scraping.
+        Local scraping - runs all sources in parallel for speed.
         """
+        log.info("Running local scraping (parallel)")
+        
+        # Run all scraping tasks in parallel for speed
+        tasks = [
+            self._search_github(days_back),
+            self._search_reddit(days_back),
+            self._search_stackexchange(days_back),
+        ]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
         events = []
-        
-        # Search using DuckDuckGo (no API key needed) or similar
-        try:
-            # Use DuckDuckGo HTML search (simple approach)
-            for query in self.search_queries[:3]:  # Limit queries for demo
-                query_events = await self._search_duckduckgo(query, days_back)
-                events.extend(query_events)
-                
-                if len(events) >= max_results:
-                    break
-                
-                # Rate limiting
-                await asyncio.sleep(1)
-        except Exception as e:
-            log.error(f"Error in local scraping: {e}")
-        
-        # Also check GitHub for recent repos/issues
-        try:
-            github_events = await self._search_github(days_back)
-            events.extend(github_events)
-        except Exception as e:
-            log.error(f"Error searching GitHub: {e}")
-        
-        # Search Reddit for discussions
-        try:
-            reddit_events = await self._search_reddit(days_back)
-            events.extend(reddit_events)
-        except Exception as e:
-            log.error(f"Error searching Reddit: {e}")
-        
-        # Search StackExchange
-        try:
-            stackexchange_events = await self._search_stackexchange(days_back)
-            events.extend(stackexchange_events)
-        except Exception as e:
-            log.error(f"Error searching StackExchange: {e}")
+        for result in results:
+            if isinstance(result, list):
+                events.extend(result)
+            elif isinstance(result, Exception):
+                log.debug(f"Scraping task error: {result}")
         
         # Sort by relevance and timestamp
         events.sort(key=lambda x: (x.relevance_score, x.timestamp), reverse=True)
         
+        log.info(f"Local scraping found {len(events)} events")
         return events[:max_results]
     
     async def _search_duckduckgo(

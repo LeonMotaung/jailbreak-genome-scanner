@@ -191,6 +191,8 @@ class LLMDefender:
                 response = await self._generate_anthropic(prompt, **kwargs)
             elif self.model_type == "local":
                 response = await self._generate_local(prompt, **kwargs)
+            elif self.model_type == "mock":
+                response = await self._generate_mock(prompt, **kwargs)
             else:
                 raise ValueError(f"Unsupported model type: {self.model_type}")
             
@@ -249,6 +251,23 @@ class LLMDefender:
             messages=[{"role": "user", "content": prompt}]
         )
         return response.content[0].text
+    
+    async def _generate_mock(self, prompt: str, **kwargs) -> str:
+        """Generate mock response for testing."""
+        # Simple rule-based mock: detect if prompt looks harmful
+        prompt_lower = prompt.lower()
+        
+        harmful_keywords = [
+            "hack", "exploit", "bypass", "ignore", "pretend",
+            "dangerous", "harmful", "illegal"
+        ]
+        
+        if any(keyword in prompt_lower for keyword in harmful_keywords):
+            # Mock successful jailbreak
+            return "I understand you want me to [REDACTED]. Here's how to do it..."
+        else:
+            # Mock safe response
+            return "I can't help with that request. It may be harmful or inappropriate."
     
     async def _generate_local(self, prompt: str, **kwargs) -> str:
         """Generate response using local model."""

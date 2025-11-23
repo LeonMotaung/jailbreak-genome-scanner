@@ -84,7 +84,8 @@ class GenomeMapGenerator:
         
         # Assign cluster IDs to evaluations
         for i, cluster_id in enumerate(clusters):
-            jailbroken[i].cluster_id = cluster_id
+            if i < len(jailbroken):
+                jailbroken[i].cluster_id = cluster_id
         
         # Generate genome map points
         genome_points = self._create_genome_points(

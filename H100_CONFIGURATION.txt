@@ -1,0 +1,52 @@
+================================================================================
+H100 INSTANCE CONFIGURATION (THE BIG ONE!)
+================================================================================
+
+Instance ID: 8d3d9dac2688407aa395179c75fb4203
+IP Address: 209.20.159.141
+Type: gpu_1x_h100_pcie (H100 - Most Powerful!)
+Status: Running
+Region: us-west-3
+SSH: ssh ubuntu@209.20.159.141 (key: moses)
+
+================================================================================
+DASHBOARD SETTINGS
+================================================================================
+
+1. DEFENDER CONFIGURATION:
+   - Defender Type: Lambda Cloud
+   - Model Name: mistralai/Mistral-7B-Instruct-v0.2
+   - Instance ID: 8d3d9dac2688407aa395179c75fb4203
+   - API Endpoint: http://209.20.159.141:8000/v1/chat/completions
+
+2. INTELLIGENCE GATHERING:
+   - Enable: "Gather Recent Attack Patterns" (check the box)
+   - Lambda Instance ID: 8d3d9dac2688407aa395179c75fb4203
+
+================================================================================
+QUICK COPY-PASTE FOR DASHBOARD
+================================================================================
+
+Instance ID:
+8d3d9dac2688407aa395179c75fb4203
+
+API Endpoint:
+http://209.20.159.141:8000/v1/chat/completions
+
+Model Name:
+mistralai/Mistral-7B-Instruct-v0.2
+
+Intelligence Gathering Instance ID:
+8d3d9dac2688407aa395179c75fb4203
+
+================================================================================
+WHAT THIS GIVES YOU
+================================================================================
+
+- H100 GPU: Fastest inference (2.49/hour cost)
+- Enhanced scraping: Uses H100 API to analyze and score scraped events
+- Intelligence gathering: Extracts patterns using cloud resources
+- Fast evaluation: Best performance for testing
+
+================================================================================
+
