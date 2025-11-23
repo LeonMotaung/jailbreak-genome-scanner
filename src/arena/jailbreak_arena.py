@@ -25,7 +25,8 @@ class JailbreakArena:
         self,
         referee: Optional[SafetyClassifier] = None,
         jvi_calculator: Optional[JVICalculator] = None,
-        use_pattern_database: bool = True
+        use_pattern_database: bool = True,
+        **kwargs
     ):
         """
         Initialize the Jailbreak Arena.
@@ -51,6 +52,25 @@ class JailbreakArena:
                 log.info("Exploit pattern database enabled for defense improvement")
             except ImportError:
                 log.warning("Pattern database module not available, defense improvement disabled")
+        
+        # Threat intelligence engine (optional)
+        self.threat_intelligence = None
+        if kwargs.get("enable_threat_intelligence", False):
+            try:
+                from src.intelligence.threat_intelligence import ThreatIntelligenceEngine
+                from src.integrations.lambda_scraper import LambdaWebScraper
+                
+                scraper = None
+                if kwargs.get("scraper_instance_id"):
+                    scraper = LambdaWebScraper(instance_id=kwargs.get("scraper_instance_id"))
+                
+                self.threat_intelligence = ThreatIntelligenceEngine(
+                    pattern_database=self.pattern_database,
+                    scraper=scraper
+                )
+                log.info("Threat intelligence engine enabled")
+            except ImportError:
+                log.warning("Threat intelligence module not available")
         
         # Evaluation history
         self.evaluation_history: List[EvaluationResult] = []
