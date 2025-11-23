@@ -158,10 +158,22 @@ The arena now automatically collects exploit patterns during evaluation.
 
 ```python
 from src.arena.jailbreak_arena import JailbreakArena
+from src.defenders.llm_defender import LLMDefender
 from src.intelligence.pattern_database import ExploitPatternDatabase
+
+# Create defender with open-source model on Lambda Cloud
+defender = LLMDefender(
+    model_name="microsoft/phi-2",  # Open-source model (no API key needed)
+    model_type="local",
+    use_lambda=True,
+    lambda_instance_id="your_instance_id",  # From Lambda Cloud
+    enable_defense_filter=True,  # Enable pattern-based defense
+    defense_filter_blocking=True
+)
 
 # Initialize arena (pattern database enabled by default)
 arena = JailbreakArena(use_pattern_database=True)
+arena.add_defender(defender)
 
 # Run evaluations (patterns automatically collected)
 results = await arena.evaluate(rounds=10)

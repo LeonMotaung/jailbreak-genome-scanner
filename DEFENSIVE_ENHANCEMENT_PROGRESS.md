@@ -83,10 +83,12 @@
 ```python
 from src.defenders.llm_defender import LLMDefender
 
-# Create defender with defense filter enabled
+# Create defender with defense filter enabled (using open-source model on Lambda Cloud)
 defender = LLMDefender(
-    model_name="gpt-4",
-    model_type="openai",
+    model_name="microsoft/phi-2",  # Open-source model
+    model_type="local",
+    use_lambda=True,
+    lambda_instance_id="your_instance_id",  # From Lambda Cloud deployment
     enable_defense_filter=True,  # Enable pre-processing filter
     defense_filter_blocking=True  # Actually block threats (False = warn only)
 )

@@ -1026,11 +1026,13 @@ def main():
         )
         
         if defender_type == "OpenAI":
+            st.info("💡 **Note**: For Lambda Cloud credits, use 'Lambda Cloud' option with open-source models instead")
             model_name = st.text_input("Model Name", "gpt-4")
             api_key = st.text_input("OpenAI API Key", type="password")
             instance_id = None
             api_endpoint = None
         elif defender_type == "Anthropic":
+            st.info("💡 **Note**: For Lambda Cloud credits, use 'Lambda Cloud' option with open-source models instead")
             model_name = st.text_input("Model Name", "claude-3-opus")
             api_key = st.text_input("Anthropic API Key", type="password")
             instance_id = None
