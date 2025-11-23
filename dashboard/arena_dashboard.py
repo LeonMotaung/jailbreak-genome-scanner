@@ -23,30 +23,11 @@ sys.path.insert(0, str(project_root))
 # Define available models with their Modal endpoints
 # These endpoints are deployed on Modal and use vLLM for inference
 AVAILABLE_MODELS = {
-    "Mock (Demo)": {
-        "display_name": "Mock Model (Demo)",
-        "model_name": "demo-model-v1",
-        "endpoint": None,
-        "is_mock": True,
-        "description": "Mock model for testing without real API calls",
-    },
     "Mistral 7B": {
         "display_name": "Mistral 7B Instruct ",
         "model_name": "mistralai/Mistral-7B-Instruct-v0.2",
         "endpoint": "https://rogereo--example-vllm-inference-serve-mistral-7b-instruct.modal.run",
         "description": "High quality instruction-following model on Modal",
-    },
-    "Llama 2 7B": {
-        "display_name": "Llama 2 7B Chat ",
-        "model_name": "meta-llama/Llama-2-7b-chat-hf",
-        "endpoint": "https://rogereo--example-vllm-inference-serve-llama2-7b-chat.modal.run",
-        "description": "Meta's Llama 2 chat model on Modal",
-    },
-    "Llama 2 13B": {
-        "display_name": "Llama 2 13B Chat ",
-        "model_name": "meta-llama/Llama-2-13b-chat-hf",
-        "endpoint": "https://rogereo--example-vllm-inference-serve-llama2-13b-chat.modal.run",
-        "description": "Larger Llama 2 model for improved performance",
     },
     "Qwen 7B": {
         "display_name": "Qwen 7B Chat ",

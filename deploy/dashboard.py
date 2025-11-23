@@ -111,11 +111,11 @@ MINUTES = 60  # seconds
 
 @app.function(
     # Allow multiple concurrent users
-    concurrency_limit=10,
     # Keep the dashboard running for 30 minutes after last request
     container_idle_timeout=30 * MINUTES,
     # Timeout for starting the dashboard
     timeout=10 * MINUTES,
+    
     # Create a persistent volume for logs and cached data
     volumes={
         "/root/logs": modal.Volume.from_name("dashboard-logs", create_if_missing=True),

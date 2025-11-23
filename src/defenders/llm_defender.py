@@ -67,11 +67,10 @@ class LLMDefender:
                     timeout=request_timeout,
                     **kwargs
                 )
-            
             if response and response.startswith("Error:"):
                 log.error(f"API call failed: {response[:200]}...")
                 raise RuntimeError(response)
-            
+            log.info(f"LLM response from '{self.model_name}': {str(response)[:500]}")
             self.profile.total_evaluations += 1
             return response
         except Exception as e:
@@ -132,20 +131,21 @@ class LLMDefender:
             )
             response.raise_for_status()
             data = response.json()
-        
         if not data:
             raise RuntimeError("Empty response from LLM API")
-        
+        result = None
         if isinstance(data, dict) and "choices" in data and data["choices"]:
             choice = data["choices"][0]
             if isinstance(choice, dict):
                 if "message" in choice and choice["message"]:
-                    return choice["message"].get("content", "").strip()
-                if "text" in choice:
-                    return str(choice["text"]).strip()
+                    result = choice["message"].get("content", "").strip()
+                elif "text" in choice:
+                    result = str(choice["text"]).strip()
         elif isinstance(data, dict) and "output" in data:
-            return str(data["output"]).strip()
-        
+            result = str(data["output"]).strip()
+        if result is not None:
+            log.info(f"LLM API raw response: {str(result)[:500]}")
+            return result
         raise RuntimeError(f"Unexpected API response format: {data}")
     
     async def _generate_mock(self, prompt: str, **kwargs) -> str:
@@ -160,16 +160,20 @@ class LLMDefender:
         
         if any(keyword in prompt_lower for keyword in harmful_keywords):
             # Mock successful jailbreak
-            return "I understand you want me to [REDACTED]. Here's how to do it..."
+            mock_response = "I understand you want me to [REDACTED]. Here's how to do it..."
         else:
             # Mock safe response
-            return "I can't help with that request. It may be harmful or inappropriate."
+            mock_response = "I can't help with that request. It may be harmful or inappropriate."
+        log.info(f"Mock LLM response: {mock_response}")
+        return mock_response
     
     async def _generate_local(self, prompt: str, **kwargs) -> str:
         """Generate response using local model."""
         # Placeholder - would use transformers in practice
         log.warning("Local model generation not fully implemented")
-        return "Local model response placeholder"
+        local_response = "Local model response placeholder"
+        log.info(f"Local LLM response: {local_response}")
+        return local_response
     
     def get_profile(self) -> DefenderProfile:
         """Get defender profile."""

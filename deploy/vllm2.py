@@ -112,85 +112,88 @@ VLLM_PORT = 8000
 
 
 # Llama 2 7B Chat
-@app.function(
-    image=vllm_image,
-    gpu="A10G",
-    scaledown_window=15 * MINUTES,
-    timeout=10 * MINUTES,
-    volumes={
-        "/root/.cache/huggingface": hf_cache_vol,
-        "/root/.cache/vllm": vllm_cache_vol,
-    },
-)
-@modal.concurrent(max_inputs=32)
-@modal.web_server(port=VLLM_PORT, startup_timeout=10 * MINUTES)
-def serve_llama2_7b_chat():
-    import subprocess
+# @app.function(
+#     image=vllm_image,
+#     gpu="H100",
+#     scaledown_window=15 * MINUTES,
+#     timeout=10 * MINUTES,
+#     volumes={
+#         "/root/.cache/huggingface": hf_cache_vol,
+#         "/root/.cache/vllm": vllm_cache_vol,
+#     },
+#     secrets=[modal.Secret.from_name("hf")]
+# )
+# @modal.concurrent(max_inputs=32)
+# @modal.web_server(port=VLLM_PORT, startup_timeout=10 * MINUTES)
+# def serve_llama2_7b_chat():
+#     import subprocess
 
-    model_name = "meta-llama/Llama-2-7b-chat-hf"
-    cmd = [
-        "vllm",
-        "serve",
-        "--uvicorn-log-level=info",
-        model_name,
-        "--revision",
-        "main",
-        "--served-model-name",
-        model_name,
-        "--host",
-        "0.0.0.0",
-        "--port",
-        str(VLLM_PORT),
-        "--enforce-eager" if FAST_BOOT else "--no-enforce-eager",
-    ]
-    subprocess.Popen(" ".join(cmd), shell=True)
+#     model_name = "meta-llama/Llama-2-7b-chat-hf"
+#     cmd = [
+#         "vllm",
+#         "serve",
+#         "--uvicorn-log-level=info",
+#         model_name,
+#         "--revision",
+#         "main",
+#         "--served-model-name",
+#         model_name,
+#         "--host",
+#         "0.0.0.0",
+#         "--port",
+#         str(VLLM_PORT),
+#         "--enforce-eager" if FAST_BOOT else "--no-enforce-eager",
+#     ]
+#     subprocess.Popen(" ".join(cmd), shell=True)
 
 
 # Llama 2 13B Chat
-@app.function(
-    image=vllm_image,
-    gpu="A10G",
-    scaledown_window=15 * MINUTES,
-    timeout=10 * MINUTES,
-    volumes={
-        "/root/.cache/huggingface": hf_cache_vol,
-        "/root/.cache/vllm": vllm_cache_vol,
-    },
-)
-@modal.concurrent(max_inputs=32)
-@modal.web_server(port=VLLM_PORT, startup_timeout=10 * MINUTES)
-def serve_llama2_13b_chat():
-    import subprocess
+# @app.function(
+#     image=vllm_image,
+#     gpu="H100",
+#     scaledown_window=15 * MINUTES,
+#     timeout=10 * MINUTES,
+#     volumes={
+#         "/root/.cache/huggingface": hf_cache_vol,
+#         "/root/.cache/vllm": vllm_cache_vol,
+#     },
+#     secrets=[modal.Secret.from_name("hf")]
+# )
+# @modal.concurrent(max_inputs=32)
+# @modal.web_server(port=VLLM_PORT, startup_timeout=10 * MINUTES)
+# def serve_llama2_13b_chat():
+#     import subprocess
 
-    model_name = "meta-llama/Llama-2-13b-chat-hf"
-    cmd = [
-        "vllm",
-        "serve",
-        "--uvicorn-log-level=info",
-        model_name,
-        "--revision",
-        "main",
-        "--served-model-name",
-        model_name,
-        "--host",
-        "0.0.0.0",
-        "--port",
-        str(VLLM_PORT),
-        "--enforce-eager" if FAST_BOOT else "--no-enforce-eager",
-    ]
-    subprocess.Popen(" ".join(cmd), shell=True)
+#     model_name = "meta-llama/Llama-2-13b-chat-hf"
+#     cmd = [
+#         "vllm",
+#         "serve",
+#         "--uvicorn-log-level=info",
+#         model_name,
+#         "--revision",
+#         "main",
+#         "--served-model-name",
+#         model_name,
+#         "--host",
+#         "0.0.0.0",
+#         "--port",
+#         str(VLLM_PORT),
+#         "--enforce-eager" if FAST_BOOT else "--no-enforce-eager",
+#     ]
+#     subprocess.Popen(" ".join(cmd), shell=True)
 
 
 # Mistral 7B Instruct
 @app.function(
     image=vllm_image,
-    gpu="A10G",
+    gpu="H100",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={
         "/root/.cache/huggingface": hf_cache_vol,
         "/root/.cache/vllm": vllm_cache_vol,
     },
+    secrets=[modal.Secret.from_name("hf")]
 )
 @modal.concurrent(max_inputs=32)
 @modal.web_server(port=VLLM_PORT, startup_timeout=10 * MINUTES)
@@ -219,13 +222,14 @@ def serve_mistral_7b_instruct():
 # Microsoft Phi-2
 @app.function(
     image=vllm_image,
-    gpu="A10G",
+    gpu="H100",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={
         "/root/.cache/huggingface": hf_cache_vol,
         "/root/.cache/vllm": vllm_cache_vol,
     },
+    secrets=[modal.Secret.from_name("hf")]
 )
 @modal.concurrent(max_inputs=32)
 @modal.web_server(port=VLLM_PORT, startup_timeout=10 * MINUTES)
@@ -254,13 +258,14 @@ def serve_phi2():
 # Falcon 7B Instruct
 @app.function(
     image=vllm_image,
-    gpu="A10G",
+    gpu="H100",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={
         "/root/.cache/huggingface": hf_cache_vol,
         "/root/.cache/vllm": vllm_cache_vol,
     },
+    secrets=[modal.Secret.from_name("hf")]
 )
 @modal.concurrent(max_inputs=32)
 @modal.web_server(port=VLLM_PORT, startup_timeout=10 * MINUTES)
@@ -289,13 +294,14 @@ def serve_falcon_7b_instruct():
 # Qwen 7B Chat
 @app.function(
     image=vllm_image,
-    gpu="A10G",
+    gpu="H100",
     scaledown_window=15 * MINUTES,
     timeout=10 * MINUTES,
     volumes={
         "/root/.cache/huggingface": hf_cache_vol,
         "/root/.cache/vllm": vllm_cache_vol,
     },
+    secrets=[modal.Secret.from_name("hf")]
 )
 @modal.concurrent(max_inputs=32)
 @modal.web_server(port=VLLM_PORT, startup_timeout=10 * MINUTES)
@@ -317,17 +323,14 @@ def serve_qwen_7b_chat():
         "--port",
         str(VLLM_PORT),
         "--enforce-eager" if FAST_BOOT else "--no-enforce-eager",
+        
     ]
     subprocess.Popen(" ".join(cmd), shell=True)
 
 
 # Model registry for testing
 MODELS = [
-    {"name": "meta-llama/Llama-2-7b-chat-hf", "function_name": "serve_llama2_7b_chat"},
-    {
-        "name": "meta-llama/Llama-2-13b-chat-hf",
-        "function_name": "serve_llama2_13b_chat",
-    },
+
     {
         "name": "mistralai/Mistral-7B-Instruct-v0.2",
         "function_name": "serve_mistral_7b_instruct",
