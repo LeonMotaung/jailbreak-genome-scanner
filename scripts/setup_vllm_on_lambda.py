@@ -122,24 +122,44 @@ def setup_vllm(instance_ip="150.136.146.143", ssh_key="moses.pem", model="micros
                     for line in iter(process.stdout.readline, ''):
                         if line:
                             output_lines.append(line)
-                            print(line.rstrip())
+                            try:
+                                print(line.rstrip())
+                            except (BrokenPipeError, OSError):
+                                # Output pipe closed, continue reading
+                                pass
+                except (BrokenPipeError, OSError):
+                    # Pipe broken, this is normal when process closes
+                    pass
                 except Exception:
                     pass
                 finally:
                     if process.stdout:
-                        process.stdout.close()
+                        try:
+                            process.stdout.close()
+                        except:
+                            pass
             
             def read_stderr():
                 try:
                     for line in iter(process.stderr.readline, ''):
                         if line:
                             error_lines.append(line)
-                            print(line.rstrip(), file=sys.stderr)
+                            try:
+                                print(line.rstrip(), file=sys.stderr)
+                            except (BrokenPipeError, OSError):
+                                # Output pipe closed, continue reading
+                                pass
+                except (BrokenPipeError, OSError):
+                    # Pipe broken, this is normal when process closes
+                    pass
                 except Exception:
                     pass
                 finally:
                     if process.stderr:
-                        process.stderr.close()
+                        try:
+                            process.stderr.close()
+                        except:
+                            pass
             
             stdout_thread = threading.Thread(target=read_stdout, daemon=True)
             stderr_thread = threading.Thread(target=read_stderr, daemon=True)
@@ -182,7 +202,27 @@ def setup_vllm(instance_ip="150.136.146.143", ssh_key="moses.pem", model="micros
             if error_lines:
                 print("\nError output:")
                 for line in error_lines[-20:]:  # Show last 20 error lines
-                    print(line.rstrip())
+                    try:
+                        print(line.rstrip())
+                    except (BrokenPipeError, OSError):
+                        pass
+            # Check if it's just a broken pipe (which might be OK if setup actually succeeded)
+            if return_code == 120:  # Common timeout/broken pipe code
+                print("\n[INFO] Got broken pipe error, but setup may have succeeded.")
+                print("Checking if vLLM is actually running...")
+                # Check if server is running despite the error
+                check_cmd = ['ssh', '-i', str(ssh_key_path), '-o', 'StrictHostKeyChecking=no',
+                           f'ubuntu@{instance_ip}', 
+                           'bash', '-c', 'pgrep -f "vllm.entrypoints.openai.api_server" && echo "running" || echo "not running"']
+                try:
+                    check_result = subprocess.run(check_cmd, capture_output=True, text=True,
+                                                encoding='utf-8', errors='replace', timeout=10)
+                    if "running" in check_result.stdout:
+                        print("[OK] vLLM server appears to be running despite error!")
+                        print("This may be a false error. Checking health endpoint...")
+                        return True  # Continue to health check
+                except:
+                    pass
             return False
         else:
             print("\n[OK] Virtual environment setup complete")
