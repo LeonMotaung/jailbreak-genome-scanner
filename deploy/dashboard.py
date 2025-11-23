@@ -119,9 +119,6 @@ MINUTES = 60  # seconds
     # Create a persistent volume for logs and cached data
     volumes={
         "/root/logs": modal.Volume.from_name("dashboard-logs", create_if_missing=True),
-        "/root/.cache": modal.Volume.from_name(
-            "dashboard-cache", create_if_missing=True
-        ),
     },
     # Pass Modal endpoints as environment variables
     env=MODAL_ENDPOINTS,
