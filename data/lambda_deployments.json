@@ -1,13 +1,19 @@
 {
   "deployed_models": {
     "mistral-7b-instruct": {
-      "instance_id": "8d3d9dac2688407aa395179c75fb4203",
+      "instance_id": "cd6537df1d7640a995090d45eff85e3e",
+      "instance_ip": "129.80.191.122",
+      "model_key": "mistral-7b-instruct",
       "model_name": "mistralai/Mistral-7B-Instruct-v0.2",
       "instance_type": "gpu_1x_a10",
-      "region": "us-west-3",
+      "region": "us-east-1",
       "status": "active",
-      "instance_ip": "209.20.159.141",
-      "api_endpoint": "http://209.20.159.141:8000/v1/chat/completions"
+      "launched_at": "2025-11-23T10:45:35.359767",
+      "api_endpoint": "http://129.80.191.122:8000/v1/chat/completions",
+      "api_endpoint_local": "http://localhost:8000/v1/chat/completions",
+      "cost_per_hour": 0.75,
+      "vllm_running": true,
+      "ssh_key": "moses.pem"
     },
     "llama-2-7b-chat": {
       "instance_id": "f401d9d6a1e649b2a74be9a2959a828a",
@@ -17,6 +23,21 @@
       "status": "active",
       "instance_ip": "150.136.146.143",
       "api_endpoint": "http://150.136.146.143:8000/v1/completions"
+    },
+    "qwen-7b-chat": {
+      "instance_id": "fe9576a10897449a8311eb667866abe8",
+      "instance_ip": "150.136.220.151",
+      "model_key": "qwen-7b-chat",
+      "model_name": "Qwen/Qwen-7B-Chat",
+      "instance_type": "gpu_1x_a10",
+      "region": "us-east-1",
+      "status": "active",
+      "launched_at": "2025-11-23T10:47:05.339784",
+      "api_endpoint": "http://150.136.220.151:8000/v1/chat/completions",
+      "api_endpoint_local": "http://localhost:8001/v1/chat/completions",
+      "cost_per_hour": 0.75,
+      "vllm_running": true,
+      "ssh_key": "moses.pem"
     }
   },
   "available_models": {
@@ -49,6 +70,32 @@
       "model_name": "Qwen/Qwen-7B-Chat",
       "instance_type": "gpu_1x_a10",
       "description": "Qwen 7B Chat - Multilingual support"
+    }
+  },
+  "launched_instances": {
+    "cd6537df1d7640a995090d45eff85e3e": {
+      "instance_id": "cd6537df1d7640a995090d45eff85e3e",
+      "instance_ip": "129.80.191.122",
+      "model_key": "mistral-7b-instruct",
+      "model_name": "mistralai/Mistral-7B-Instruct-v0.2",
+      "instance_type": "gpu_1x_a10",
+      "region": "us-east-1",
+      "status": "launched",
+      "launched_at": "2025-11-23T10:45:35.359767",
+      "api_endpoint": "http://129.80.191.122:8000/v1/chat/completions",
+      "cost_per_hour": 0.75
+    },
+    "fe9576a10897449a8311eb667866abe8": {
+      "instance_id": "fe9576a10897449a8311eb667866abe8",
+      "instance_ip": "150.136.220.151",
+      "model_key": "qwen-7b-chat",
+      "model_name": "Qwen/Qwen-7B-Chat",
+      "instance_type": "gpu_1x_a10",
+      "region": "us-east-1",
+      "status": "launched",
+      "launched_at": "2025-11-23T10:47:05.339784",
+      "api_endpoint": "http://150.136.220.151:8000/v1/chat/completions",
+      "cost_per_hour": 0.75
     }
   }
 }

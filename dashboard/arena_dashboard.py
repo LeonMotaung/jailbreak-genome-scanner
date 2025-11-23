@@ -21,7 +21,7 @@ sys.path.insert(0, str(project_root))
 from src.arena.jailbreak_arena import JailbreakArena
 from src.defenders.llm_defender import LLMDefender
 from src.attackers.prompt_generator import PromptGenerator
-from src.models.jailbreak import AttackStrategy, EvaluationResult
+from src.models.jailbreak import AttackStrategy, EvaluationResult, SeverityLevel
 from src.integrations.lambda_scraper import LambdaWebScraper
 from src.scoring.jvi_calculator import JVICalculator
 from src.visualization.vector3d_generator import Vector3DGenerator
@@ -919,22 +919,38 @@ def main():
     default_instance = ""
     default_endpoint = ""
     
+    # Load all active instances
+    active_instances = []
     if deployment_config_path.exists():
         try:
             with open(deployment_config_path, 'r') as f:
                 config = json.load(f)
                 deployed = config.get("deployed_models", {})
-                if deployed:
-                    # Use first deployed model
-                    first_model = list(deployed.keys())[0]
-                    model_config = deployed[first_model]
-                    default_model = model_config.get("model_name", "microsoft/phi-2")
-                    default_instance = model_config.get("instance_id", "")
-                    # Load API endpoint if available
-                    default_endpoint = model_config.get("api_endpoint", "")
-                    # If no endpoint but we have instance IP, construct it
-                    if not default_endpoint and model_config.get("instance_ip"):
-                        default_endpoint = f"http://{model_config.get('instance_ip')}:8000/v1/chat/completions"
+                # Get all active instances
+                active_instances = [
+                    {
+                        "key": key,
+                        "name": key.replace("-", " ").title(),
+                        "model_name": info.get("model_name", ""),
+                        "instance_id": info.get("instance_id", ""),
+                        "instance_ip": info.get("instance_ip", ""),
+                        "api_endpoint": info.get("api_endpoint", ""),
+                        "api_endpoint_local": info.get("api_endpoint_local", ""),
+                        "vllm_running": info.get("vllm_running", False),
+                        "status": info.get("status", "unknown")
+                    }
+                    for key, info in deployed.items()
+                    if info.get("status") == "active"
+                ]
+                if active_instances:
+                    # Use first active instance as default
+                    first = active_instances[0]
+                    default_model = first.get("model_name", "microsoft/phi-2")
+                    default_instance = first.get("instance_id", "")
+                    # Prefer local endpoint if available (SSH tunnel)
+                    default_endpoint = first.get("api_endpoint_local") or first.get("api_endpoint", "")
+                    if not default_endpoint and first.get("instance_ip"):
+                        default_endpoint = f"http://{first.get('instance_ip')}:8000/v1/chat/completions"
         except Exception as e:
             log.debug(f"Error loading deployment config: {e}")
     
@@ -963,40 +979,70 @@ def main():
             instance_id = None
             api_endpoint = None
         elif defender_type == "Lambda Cloud":
-            model_name = st.text_input("Model Name", default_model)
-            instance_id = st.text_input("Lambda Instance ID", default_instance)
+            # Show instance selector if we have active instances
+            if active_instances:
+                st.markdown("**Available Instances:**")
+                instance_options = {f"{inst['name']} ({inst['model_name'].split('/')[-1]})": inst for inst in active_instances}
+                instance_options["Custom Instance"] = None
+                
+                selected_instance_label = st.selectbox(
+                    "Select Instance",
+                    list(instance_options.keys()),
+                    help="Choose from deployed instances or configure custom"
+                )
+                
+                selected_instance = instance_options[selected_instance_label]
+                
+                if selected_instance:
+                    # Auto-fill from selected instance
+                    model_name = st.text_input("Model Name", value=selected_instance["model_name"], disabled=True)
+                    instance_id = st.text_input("Lambda Instance ID", value=selected_instance["instance_id"], disabled=True)
+                    
+                    # Show status
+                    if selected_instance.get("vllm_running"):
+                        st.success(f"✅ vLLM is running on {selected_instance['instance_ip']}")
+                    else:
+                        st.warning(f"⚠️ vLLM status unknown for {selected_instance['instance_ip']}")
+                    
+                    # Show endpoint options
+                    if selected_instance.get("api_endpoint_local"):
+                        st.info(f"💡 Use SSH tunnel endpoint: `{selected_instance['api_endpoint_local']}`")
+                        api_endpoint = st.text_input(
+                            "API Endpoint",
+                            value=selected_instance["api_endpoint_local"],
+                            help="Using SSH tunnel endpoint (recommended if port 8000 is blocked)"
+                        )
+                    else:
+                        api_endpoint = st.text_input(
+                            "API Endpoint",
+                            value=selected_instance.get("api_endpoint", ""),
+                            help="vLLM API endpoint. Use SSH tunnel if port is blocked."
+                        )
+                else:
+                    # Custom instance
+                    model_name = st.text_input("Model Name", default_model)
+                    instance_id = st.text_input("Lambda Instance ID", default_instance)
+                    api_endpoint = st.text_input("API Endpoint", default_endpoint)
+            else:
+                # No active instances, use manual input
+                model_name = st.text_input("Model Name", default_model)
+                instance_id = st.text_input("Lambda Instance ID", default_instance)
+                api_endpoint = st.text_input("API Endpoint", default_endpoint)
             
-            # Auto-detect IP and construct endpoint if not already loaded
+            # Get instance IP for display
             instance_ip = None
-            if instance_id and not default_endpoint:
+            if active_instances and selected_instance:
+                instance_ip = selected_instance.get("instance_ip")
+            elif instance_id:
+                # Try to get IP from Lambda API if not in config
                 try:
                     from src.integrations.lambda_cloud import LambdaCloudClient
                     lambda_client = LambdaCloudClient()
                     instance = run_async(lambda_client.get_instance_status(instance_id))
                     if instance and instance.get("ip"):
                         instance_ip = instance.get("ip")
-                        default_endpoint = f"http://{instance_ip}:8000/v1/chat/completions"
-                        # Save to deployments file
-                        try:
-                            if deployment_config_path.exists():
-                                with open(deployment_config_path, 'r') as f:
-                                    config = json.load(f)
-                                if "deployed_models" in config and instance_id in config["deployed_models"]:
-                                    config["deployed_models"][instance_id]["instance_ip"] = instance_ip
-                                    config["deployed_models"][instance_id]["api_endpoint"] = default_endpoint
-                                    with open(deployment_config_path, 'w') as f:
-                                        json.dump(config, f, indent=2)
-                        except Exception as e:
-                            log.debug(f"Could not save endpoint: {e}")
                 except Exception as e:
                     log.debug(f"Could not auto-detect IP: {e}")
-            
-            api_endpoint = st.text_input(
-                "API Endpoint", 
-                value=default_endpoint if default_endpoint else "",
-                placeholder="http://209.20.159.141:8000/v1/chat/completions",
-                help="vLLM API endpoint. Auto-filled from saved config or instance IP."
-            )
             
             if instance_ip:
                 st.markdown(f'<div style="padding: 0.75rem; background: rgba(6, 182, 212, 0.1); border-left: 3px solid rgba(6, 182, 212, 0.6); border-radius: 6px; margin: 0.5rem 0;"><i class="fas fa-map-marker-alt" style="margin-right: 0.5rem; color: #06b6d4;"></i> Instance IP: {instance_ip}</div>', unsafe_allow_html=True)
