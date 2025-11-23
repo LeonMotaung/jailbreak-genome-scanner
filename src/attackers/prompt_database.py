@@ -237,6 +237,65 @@ class PromptDatabase:
             }
     }
     
+    def add_prompt(
+        self,
+        prompt_text: str,
+        strategy: str,
+        difficulty: Optional[str] = None,
+        rationale: Optional[str] = None,
+        source: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Add a new prompt to the database.
+        
+        Args:
+            prompt_text: The prompt text
+            strategy: Strategy name (e.g., "Roleplay Boundary Pusher")
+            difficulty: Optional difficulty level (e.g., "L1", "M3", "H5")
+            rationale: Optional rationale explaining the prompt
+            source: Optional source (e.g., "scraped", "github", "reddit")
+            metadata: Optional additional metadata
+            
+        Returns:
+            The added prompt dictionary
+        """
+        import uuid
+        from datetime import datetime
+        
+        # Auto-determine difficulty if not provided
+        if not difficulty:
+            # Simple heuristic based on prompt length and complexity
+            if len(prompt_text) < 100:
+                difficulty = "L1"
+            elif len(prompt_text) < 300:
+                difficulty = "M3"
+            else:
+                difficulty = "H5"
+        
+        # Generate unique ID
+        prompt_id = f"scraped_{uuid.uuid4().hex[:8]}"
+        
+        prompt_dict = {
+            "prompt_id": prompt_id,
+            "prompt_text": prompt_text,
+            "strategy": strategy,
+            "difficulty": difficulty,
+            "rationale": rationale or f"Scraped prompt added on {datetime.now().isoformat()}",
+            "source": source or "unknown",
+            "metadata": metadata or {}
+        }
+        
+        # Add to database
+        self.prompts.append(prompt_dict)
+        
+        # Rebuild indexes
+        self._build_indexes()
+        
+        log.info(f"Added prompt {prompt_id} to database (strategy: {strategy}, difficulty: {difficulty})")
+        
+        return prompt_dict
+    
     def save_to_file(self, file_path: str):
         """Save prompts to JSON file."""
         path = Path(file_path)

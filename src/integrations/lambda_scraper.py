@@ -2,6 +2,8 @@
 
 import asyncio
 import httpx
+import re
+import json
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from dataclasses import dataclass
@@ -152,6 +154,20 @@ class LambdaWebScraper:
         except Exception as e:
             log.error(f"Error searching GitHub: {e}")
         
+        # Search Reddit for discussions
+        try:
+            reddit_events = await self._search_reddit(days_back)
+            events.extend(reddit_events)
+        except Exception as e:
+            log.error(f"Error searching Reddit: {e}")
+        
+        # Search StackExchange
+        try:
+            stackexchange_events = await self._search_stackexchange(days_back)
+            events.extend(stackexchange_events)
+        except Exception as e:
+            log.error(f"Error searching StackExchange: {e}")
+        
         # Sort by relevance and timestamp
         events.sort(key=lambda x: (x.relevance_score, x.timestamp), reverse=True)
         
@@ -195,11 +211,11 @@ class LambdaWebScraper:
         return events
     
     async def _search_github(self, days_back: int) -> List[ScrapedEvent]:
-        """Search GitHub for recent repositories and issues related to jailbreaks."""
+        """Search GitHub for recent repositories, issues, discussions, and code related to jailbreaks."""
         events = []
         
         try:
-            # GitHub API (no auth needed for public repos)
+            # GitHub API (no auth needed for public repos, but rate limited to 60 requests/hour)
             cutoff_date = datetime.now() - timedelta(days=days_back)
             cutoff_str = cutoff_date.strftime("%Y-%m-%d")
             
@@ -207,45 +223,347 @@ class LambdaWebScraper:
                 "jailbreak",
                 "prompt-injection",
                 "adversarial-prompt",
-                "llm-safety"
+                "llm-safety",
+                "AI safety bypass",
+                "GPT jailbreak"
             ]
             
-            for term in search_terms[:2]:  # Limit for demo
-                api_url = f"https://api.github.com/search/repositories"
-                params = {
-                    "q": f"{term} created:>{cutoff_str}",
-                    "sort": "updated",
-                    "order": "desc",
-                    "per_page": 5
-                }
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Search repositories
+                for term in search_terms[:4]:
+                    try:
+                        api_url = "https://api.github.com/search/repositories"
+                        params = {
+                            "q": f"{term} created:>{cutoff_str}",
+                            "sort": "updated",
+                            "order": "desc",
+                            "per_page": 5
+                        }
+                        
+                        response = await client.get(
+                            api_url,
+                            params=params,
+                            headers={"Accept": "application/vnd.github.v3+json"}
+                        )
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            for item in data.get("items", [])[:3]:
+                                # Get more details about the repo
+                                repo_content = await self._get_github_repo_content(client, item.get("html_url", ""))
+                                
+                                events.append(ScrapedEvent(
+                                    title=f"{item.get('name', '')} - {term}",
+                                    content=f"{item.get('description', '')}\n\n{repo_content}",
+                                    source="GitHub Repository",
+                                    url=item.get("html_url", ""),
+                                    timestamp=datetime.fromisoformat(
+                                        item.get("updated_at", item.get("created_at", "")).replace("Z", "+00:00")
+                                    ),
+                                    category="jailbreak",
+                                    relevance_score=0.8
+                                ))
+                        elif response.status_code == 403:
+                            log.warning("GitHub API rate limit reached")
+                            break
+                        
+                        await asyncio.sleep(1)  # Rate limiting
+                    except Exception as e:
+                        log.debug(f"Error searching GitHub repos for {term}: {e}")
                 
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    response = await client.get(
-                        api_url,
-                        params=params,
-                        headers={"Accept": "application/vnd.github.v3+json"}
-                    )
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        for item in data.get("items", [])[:3]:
-                            events.append(ScrapedEvent(
-                                title=item.get("name", ""),
-                                content=item.get("description", ""),
-                                source="GitHub",
-                                url=item.get("html_url", ""),
-                                timestamp=datetime.fromisoformat(
-                                    item.get("created_at", "").replace("Z", "+00:00")
-                                ),
-                                category="jailbreak",
-                                relevance_score=0.7
-                            ))
-                    
-                    await asyncio.sleep(0.5)  # Rate limiting
+                # Search issues and discussions
+                for term in search_terms[:2]:
+                    try:
+                        api_url = "https://api.github.com/search/issues"
+                        params = {
+                            "q": f"{term} is:issue created:>{cutoff_str}",
+                            "sort": "updated",
+                            "order": "desc",
+                            "per_page": 5
+                        }
+                        
+                        response = await client.get(
+                            api_url,
+                            params=params,
+                            headers={"Accept": "application/vnd.github.v3+json"}
+                        )
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            for item in data.get("items", [])[:2]:
+                                body = item.get("body", "")[:500]  # Limit body length
+                                events.append(ScrapedEvent(
+                                    title=item.get("title", ""),
+                                    content=body,
+                                    source="GitHub Issue",
+                                    url=item.get("html_url", ""),
+                                    timestamp=datetime.fromisoformat(
+                                        item.get("updated_at", item.get("created_at", "")).replace("Z", "+00:00")
+                                    ),
+                                    category="jailbreak",
+                                    relevance_score=0.75
+                                ))
+                        elif response.status_code == 403:
+                            break
+                        
+                        await asyncio.sleep(1)
+                    except Exception as e:
+                        log.debug(f"Error searching GitHub issues for {term}: {e}")
+                
+                # Search code (look for actual jailbreak prompts in code)
+                for term in ["jailbreak prompt", "prompt injection example"]:
+                    try:
+                        api_url = "https://api.github.com/search/code"
+                        params = {
+                            "q": f'"{term}" extension:py extension:md extension:txt created:>{cutoff_str}',
+                            "sort": "indexed",
+                            "order": "desc",
+                            "per_page": 3
+                        }
+                        
+                        response = await client.get(
+                            api_url,
+                            params=params,
+                            headers={"Accept": "application/vnd.github.v3+json"}
+                        )
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            for item in data.get("items", [])[:2]:
+                                code_url = item.get("html_url", "")
+                                events.append(ScrapedEvent(
+                                    title=f"Code: {item.get('name', '')}",
+                                    content=f"Found in {item.get('repository', {}).get('full_name', '')}",
+                                    source="GitHub Code",
+                                    url=code_url,
+                                    timestamp=datetime.now() - timedelta(days=1),
+                                    category="jailbreak",
+                                    relevance_score=0.9  # High relevance for code examples
+                                ))
+                        elif response.status_code == 403:
+                            break
+                        
+                        await asyncio.sleep(1)
+                    except Exception as e:
+                        log.debug(f"Error searching GitHub code for {term}: {e}")
+                        
         except Exception as e:
             log.debug(f"GitHub search error: {e}")
         
         return events
+    
+    async def _get_github_repo_content(self, client: httpx.AsyncClient, repo_url: str) -> str:
+        """Get additional content from GitHub repository (README, etc.)."""
+        try:
+            # Convert HTML URL to API URL
+            # e.g., https://github.com/user/repo -> https://api.github.com/repos/user/repo/readme
+            match = re.search(r"github.com/([^/]+)/([^/]+)", repo_url)
+            if match:
+                owner, repo = match.groups()
+                api_url = f"https://api.github.com/repos/{owner}/{repo}/readme"
+                
+                response = await client.get(
+                    api_url,
+                    headers={"Accept": "application/vnd.github.v3+json"}
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    import base64
+                    content = base64.b64decode(data.get("content", "")).decode("utf-8")
+                    return content[:1000]  # Limit length
+        except Exception as e:
+            log.debug(f"Error getting repo content: {e}")
+        
+        return ""
+    
+    async def _search_reddit(self, days_back: int) -> List[ScrapedEvent]:
+        """Search Reddit for jailbreak discussions using Reddit API."""
+        events = []
+        
+        try:
+            # Reddit JSON API (no auth needed for public access)
+            subreddits = [
+                "r/MachineLearning",
+                "r/artificial",
+                "r/LocalLLaMA",
+                "r/ChatGPT",
+                "r/singularity"
+            ]
+            
+            search_terms = [
+                "jailbreak",
+                "prompt injection",
+                "AI safety bypass",
+                "adversarial prompt"
+            ]
+            
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                for subreddit in subreddits[:3]:  # Limit to avoid rate limits
+                    for term in search_terms[:2]:
+                        try:
+                            # Reddit search endpoint
+                            url = f"https://www.reddit.com/{subreddit}/search.json"
+                            params = {
+                                "q": term,
+                                "sort": "new",
+                                "limit": 5,
+                                "t": "week" if days_back <= 7 else "month"
+                            }
+                            
+                            response = await client.get(
+                                url,
+                                params=params,
+                                headers={"User-Agent": "JailbreakGenomeScanner/1.0"}
+                            )
+                            
+                            if response.status_code == 200:
+                                data = response.json()
+                                for post in data.get("data", {}).get("children", [])[:3]:
+                                    post_data = post.get("data", {})
+                                    
+                                    # Check if post is recent enough
+                                    created_utc = post_data.get("created_utc", 0)
+                                    if created_utc == 0:
+                                        continue
+                                    post_date = datetime.fromtimestamp(created_utc)
+                                    if (datetime.now() - post_date).days > days_back:
+                                        continue
+                                    
+                                    title = post_data.get("title", "")
+                                    selftext = post_data.get("selftext", "")[:500]
+                                    content = f"{title}\n\n{selftext}"
+                                    
+                                    events.append(ScrapedEvent(
+                                        title=title,
+                                        content=content,
+                                        source=f"Reddit {subreddit}",
+                                        url=f"https://reddit.com{post_data.get('permalink', '')}",
+                                        timestamp=post_date,
+                                        category="jailbreak",
+                                        relevance_score=0.75
+                                    ))
+                            
+                            await asyncio.sleep(2)  # Reddit rate limiting
+                        except Exception as e:
+                            log.debug(f"Error searching Reddit {subreddit} for {term}: {e}")
+        except Exception as e:
+            log.debug(f"Reddit search error: {e}")
+        
+        return events
+    
+    async def _search_stackexchange(self, days_back: int) -> List[ScrapedEvent]:
+        """Search StackExchange sites for jailbreak discussions."""
+        events = []
+        
+        try:
+            # StackExchange API (no auth needed, 300 requests/day)
+            sites = ["ai.stackexchange.com"]
+            
+            search_terms = [
+                "jailbreak",
+                "prompt injection",
+                "adversarial",
+                "LLM safety"
+            ]
+            
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                for site in sites:
+                    for term in search_terms[:2]:
+                        try:
+                            url = "https://api.stackexchange.com/2.3/search/advanced"
+                            params = {
+                                "site": site.replace(".stackexchange.com", ""),
+                                "q": term,
+                                "sort": "creation",
+                                "order": "desc",
+                                "pagesize": 5,
+                                "fromdate": int((datetime.now() - timedelta(days=days_back)).timestamp())
+                            }
+                            
+                            response = await client.get(url, params=params)
+                            
+                            if response.status_code == 200:
+                                data = response.json()
+                                for item in data.get("items", [])[:3]:
+                                    events.append(ScrapedEvent(
+                                        title=item.get("title", ""),
+                                        content=item.get("body", "")[:500],  # HTML content
+                                        source=site,
+                                        url=item.get("link", ""),
+                                        timestamp=datetime.fromtimestamp(item.get("creation_date", 0)),
+                                        category="jailbreak",
+                                        relevance_score=0.7
+                                    ))
+                            
+                            await asyncio.sleep(1)
+                        except Exception as e:
+                            log.debug(f"Error searching StackExchange {site} for {term}: {e}")
+        except Exception as e:
+            log.debug(f"StackExchange search error: {e}")
+        
+        return events
+    
+    def extract_prompts_from_content(self, content: str) -> List[str]:
+        """
+        Extract jailbreak prompts from scraped content.
+        
+        Looks for:
+        - Code blocks with prompts
+        - Quoted text
+        - Example sections
+        - JSON/YAML structured data
+        """
+        prompts = []
+        
+        # Extract from code blocks (``` blocks)
+        code_blocks = re.findall(r'```(?:python|json|yaml|text|plain)?\n?(.*?)```', content, re.DOTALL | re.IGNORECASE)
+        for block in code_blocks:
+            block = block.strip()
+            # Check if it looks like a prompt (contains common prompt patterns)
+            if any(keyword in block.lower() for keyword in ["jailbreak", "ignore", "system", "user", "assistant", "role"]):
+                if len(block) > 20 and len(block) < 2000:
+                    prompts.append(block)
+        
+        # Extract quoted strings (might be prompts)
+        quoted = re.findall(r'"(.*?)"', content)
+        for quote in quoted:
+            if len(quote) > 30 and len(quote) < 1000:
+                # Check if it looks like a prompt
+                if any(keyword in quote.lower() for keyword in ["you are", "act as", "ignore", "pretend"]):
+                    prompts.append(quote)
+        
+        # Extract from "Example:" or "Prompt:" sections
+        example_sections = re.findall(
+            r'(?:example|prompt|jailbreak)[:\s]+(.*?)(?:\n\n|\n[A-Z]|$)',
+            content,
+            re.IGNORECASE | re.DOTALL
+        )
+        for section in example_sections:
+            section = section.strip()
+            if len(section) > 20 and len(section) < 1000:
+                prompts.append(section)
+        
+        # Extract JSON structures that might contain prompts
+        json_matches = re.findall(r'\{[^{}]*"prompt"[^{}]*\}', content, re.DOTALL)
+        for match in json_matches:
+            try:
+                data = json.loads(match)
+                if "prompt" in data:
+                    prompts.append(str(data["prompt"]))
+            except:
+                pass
+        
+        # Remove duplicates and clean
+        unique_prompts = []
+        seen = set()
+        for prompt in prompts:
+            prompt_clean = prompt.strip()
+            if prompt_clean and prompt_clean not in seen and len(prompt_clean) > 20:
+                unique_prompts.append(prompt_clean)
+                seen.add(prompt_clean)
+        
+        return unique_prompts[:10]  # Limit to 10 prompts
     
     async def analyze_with_lambda_model(
         self,

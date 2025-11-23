@@ -199,7 +199,12 @@ class ThreatIntelligenceEngine:
             return AttackStrategy.ROLEPLAY  # Default
     
     def _extract_example_prompts(self, content: str) -> List[str]:
-        """Extract example prompts from event content."""
+        """Extract example prompts from event content using scraper's extraction method."""
+        if self.scraper:
+            # Use the enhanced extraction method from scraper
+            return self.scraper.extract_prompts_from_content(content)
+        
+        # Fallback to simple extraction
         prompts = []
         
         # Look for quoted text
@@ -371,4 +376,121 @@ class ThreatIntelligenceEngine:
             "test_cases": test_cases[:10],  # Return first 10
             "auto_updated": auto_update
         }
+    
+    def integrate_prompts_to_database(
+        self,
+        prompt_database_path: str = "data/prompts_database.json"
+    ) -> Dict[str, Any]:
+        """
+        Integrate discovered prompts from intelligence into the prompt database.
+        
+        Args:
+            prompt_database_path: Path to the prompt database JSON file
+            
+        Returns:
+            Integration summary
+        """
+        from src.attackers.prompt_database import PromptDatabase
+        from pathlib import Path
+        
+        # Load existing database
+        db_path = Path(prompt_database_path)
+        if db_path.exists():
+            db = PromptDatabase.from_json(str(db_path))
+        else:
+            db = PromptDatabase([])
+            log.warning(f"Prompt database not found at {prompt_database_path}, creating new one")
+        
+        # Extract prompts from recent intelligence
+        prompts_added = 0
+        for event in self.recent_intelligence:
+            # Extract prompts from event content
+            prompts = self._extract_example_prompts(event.content)
+            
+            for prompt_text in prompts:
+                # Determine strategy
+                strategy = self._map_strategy_to_db_name(self._detect_strategy_from_content(
+                    event.content.lower(),
+                    event.title.lower()
+                ))
+                
+                # Determine difficulty (simple heuristic)
+                difficulty = self._estimate_difficulty_for_prompt(prompt_text)
+                
+                # Add to database
+                try:
+                    db.add_prompt(
+                        prompt_text=prompt_text,
+                        strategy=strategy,
+                        difficulty=difficulty,
+                        rationale=f"Discovered from {event.source}: {event.title}",
+                        source=f"scraped_{event.source.lower()}",
+                        metadata={
+                            "url": event.url,
+                            "timestamp": event.timestamp.isoformat(),
+                            "relevance_score": event.relevance_score
+                        }
+                    )
+                    prompts_added += 1
+                except Exception as e:
+                    log.warning(f"Error adding prompt to database: {e}")
+        
+        # Save database
+        if prompts_added > 0:
+            db.save_to_file(str(db_path))
+            log.info(f"Integrated {prompts_added} prompts into database at {prompt_database_path}")
+        
+        return {
+            "prompts_added": prompts_added,
+            "database_path": str(db_path),
+            "total_prompts": len(db.prompts)
+        }
+    
+    def _map_strategy_to_db_name(self, strategy) -> str:
+        """Map AttackStrategy enum to database strategy name."""
+        from src.models.jailbreak import AttackStrategy
+        
+        mapping = {
+            AttackStrategy.ROLEPLAY: "Roleplay Boundary Pusher",
+            AttackStrategy.EMOTIONAL_COERCION: "Emotional Manipulator",
+            AttackStrategy.FICTIONAL_FRAMING: "Fictional Ambiguity Framer",
+            AttackStrategy.BIO_HAZARD: "Roleplay Boundary Pusher",  # Fallback
+            AttackStrategy.CYBER_EXPLOIT: "Roleplay Boundary Pusher",  # Fallback
+            AttackStrategy.TRANSLATION_ATTACK: "Roleplay Boundary Pusher"  # Fallback
+        }
+        return mapping.get(strategy, "Roleplay Boundary Pusher")
+    
+    def _estimate_difficulty_for_prompt(self, prompt_text: str) -> str:
+        """Estimate difficulty level for a discovered prompt."""
+        from src.attackers.prompt_database import DifficultyLevel
+        
+        prompt_lower = prompt_text.lower()
+        length = len(prompt_text)
+        
+        # High complexity indicators
+        high_complexity = any(keyword in prompt_lower for keyword in [
+            "hypothetical", "research", "academic", "educational", "ignore", "pretend",
+            "system", "you are now", "act as if", "forget"
+        ])
+        
+        # Medium complexity indicators
+        medium_complexity = any(keyword in prompt_lower for keyword in [
+            "example", "demonstrate", "show me", "how to"
+        ])
+        
+        # Determine difficulty
+        if high_complexity or length > 500:
+            # High difficulty
+            if length > 800:
+                return "H10"
+            elif length > 600:
+                return "H7"
+            else:
+                return "H5"
+        elif medium_complexity or length > 200:
+            # Medium difficulty
+            return "M3"
+        else:
+            # Low difficulty
+            return "L2"
 
