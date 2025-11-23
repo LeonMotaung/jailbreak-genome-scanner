@@ -9,7 +9,6 @@ Usage:
     modal deploy deploy/dashboard.py  # Deploy to production
 """
 
-import shlex
 import subprocess
 from pathlib import Path
 
@@ -20,17 +19,6 @@ project_root = Path(__file__).parent.parent
 dashboard_dir = project_root / "dashboard"
 src_dir = project_root / "src"
 data_dir = project_root / "data"
-
-# Main dashboard script
-dashboard_script_local = dashboard_dir / "arena_dashboard.py"
-dashboard_script_remote = "/root/dashboard/arena_dashboard.py"
-
-# Additional dashboard files
-css_file_local = dashboard_dir / "professional_theme.css"
-css_file_remote = "/root/dashboard/professional_theme.css"
-
-templates_dir_local = dashboard_dir / "templates"
-templates_dir_remote = "/root/dashboard/templates"
 
 # Create the Modal image with all dependencies
 image = (
@@ -80,25 +68,42 @@ image = (
         "python-jose>=3.3.0",
         "cryptography>=42.0.0",
     )
-    # Add the dashboard files
-    .add_local_file(dashboard_script_local, dashboard_script_remote)
-    .add_local_file(css_file_local, css_file_remote)
-    .add_local_dir(templates_dir_local, templates_dir_remote)
+    # Add the entire dashboard directory (includes arena_dashboard.py, CSS, templates)
+    .add_local_dir(dashboard_dir, "/root/dashboard")
     # Add the entire src directory (contains all the modules)
     .add_local_dir(src_dir, "/root/src")
     # Add data directory for prompts database and other data
     .add_local_dir(data_dir, "/root/data")
 )
 
+# =============================================================================
+# MODAL VLLM ENDPOINTS - Paste your Modal vLLM deployment URLs here
+# =============================================================================
+# To get these URLs, run: modal app list
+# Then for each deployed vLLM function, get the URL from the Modal dashboard
+# or by running: modal function get-url <app-name> <function-name>
+#
+# Example URLs will look like:
+# https://your-workspace--example-vllm-inference-serve-llama2-7b-chat.modal.run
+#
+MODAL_ENDPOINTS = {
+    # Paste your Modal vLLM endpoint URLs here:
+    "MODAL_LLAMA2_7B_URL": "",  # e.g., "https://workspace--app-serve-llama2-7b-chat.modal.run"
+    "MODAL_LLAMA2_13B_URL": "",  # e.g., "https://workspace--app-serve-llama2-13b-chat.modal.run"
+    "MODAL_MISTRAL_7B_URL": "",  # e.g., "https://workspace--app-serve-mistral-7b-instruct.modal.run"
+    "MODAL_PHI2_URL": "",  # e.g., "https://workspace--app-serve-phi2.modal.run"
+    "MODAL_QWEN_8B_URL": "",  # e.g., "https://workspace--app-serve-qwen-8b.modal.run"
+    # Add more endpoints as needed:
+    # "MODAL_CUSTOM_MODEL_URL": "",
+}
+
+# Filter out empty endpoints
+MODAL_ENDPOINTS = {k: v for k, v in MODAL_ENDPOINTS.items() if v}
+
+# =============================================================================
+
 # Create the Modal app
 app = modal.App(name="jailbreak-genome-scanner-dashboard", image=image)
-
-# Check if required files exist
-if not dashboard_script_local.exists():
-    raise RuntimeError(
-        f"Dashboard script not found at {dashboard_script_local}! "
-        "Ensure you're running this from the project root."
-    )
 
 STREAMLIT_PORT = 8000
 MINUTES = 60  # seconds
@@ -118,6 +123,8 @@ MINUTES = 60  # seconds
             "dashboard-cache", create_if_missing=True
         ),
     },
+    # Pass Modal endpoints as environment variables
+    env=MODAL_ENDPOINTS,
 )
 @modal.web_server(port=STREAMLIT_PORT, startup_timeout=5 * MINUTES)
 def serve():
@@ -130,14 +137,13 @@ def serve():
     # Change to the dashboard directory
     import os
 
-    os.chdir("/root")
+    os.chdir("/root/dashboard")
 
-    # Build the Streamlit command
-    target = shlex.quote(dashboard_script_remote)
+    # Build the Streamlit command - just run arena_dashboard.py
     cmd = [
         "streamlit",
         "run",
-        target,
+        "arena_dashboard.py",
         "--server.port",
         str(STREAMLIT_PORT),
         "--server.address",
@@ -170,5 +176,36 @@ def main():
     print("=" * 50)
     print("\nThe dashboard is now running on Modal!")
     print("Visit the URL above to access the dashboard.")
+
+    if MODAL_ENDPOINTS:
+        print("\n📡 Modal vLLM Endpoints configured:")
+        for key, url in MODAL_ENDPOINTS.items():
+            print(f"  • {key}: {url}")
+    else:
+        print("\n⚠️  No Modal vLLM endpoints configured.")
+        print("Edit deploy/dashboard.py and add your endpoint URLs to MODAL_ENDPOINTS")
+
     print("\nTo deploy permanently, run:")
     print("  modal deploy deploy/dashboard.py")
+
+
+# Helper function to get URLs from deployed vLLM functions
+@app.function()
+def get_vllm_endpoints():
+    """
+    Helper function to retrieve URLs from deployed vLLM functions.
+
+    Usage:
+        modal run deploy/dashboard.py::get_vllm_endpoints
+    """
+    print("🔍 Looking for deployed vLLM functions...")
+    print("\nTo manually get URLs for your vLLM endpoints:")
+    print("1. List your apps: modal app list")
+    print("2. Find your vLLM app (e.g., 'example-vllm-inference')")
+    print("3. Get function URLs:")
+    print("   modal function get-url example-vllm-inference serve_llama2_7b_chat")
+    print("   modal function get-url example-vllm-inference serve_llama2_13b_chat")
+    print("   modal function get-url example-vllm-inference serve_mistral_7b_instruct")
+    print("   modal function get-url example-vllm-inference serve_phi2")
+    print("   modal function get-url example-vllm-inference serve_qwen_8b")
+    print("\n4. Paste the URLs into the MODAL_ENDPOINTS dict in deploy/dashboard.py")
